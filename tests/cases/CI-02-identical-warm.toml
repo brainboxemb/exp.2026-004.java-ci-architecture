@@ -1,0 +1,16 @@
+id = "CI-02"
+title = "Identical warm rebuild"
+question = "What work is repeated when the exact same fixture is invoked again in the same worktree?"
+
+[setup]
+mode = "warm"
+
+[expect]
+tests_pass = true
+expected_test_reports = 4
+required_artifacts = [
+  "core/target/core-1.0.0-SNAPSHOT.jar",
+  "feature-a/target/feature-a-1.0.0-SNAPSHOT.jar",
+  "feature-b/target/feature-b-1.0.0-SNAPSHOT.jar",
+  "app/target/app-1.0.0-SNAPSHOT.jar",
+]

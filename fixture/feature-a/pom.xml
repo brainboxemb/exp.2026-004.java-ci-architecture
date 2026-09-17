@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>org.brainboxemb.experiment</groupId><artifactId>java-ci-fixture</artifactId><version>1.0.0-SNAPSHOT</version></parent>
+  <artifactId>feature-a</artifactId>
+  <dependencies>
+    <dependency><groupId>org.brainboxemb.experiment</groupId><artifactId>core</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>junit</groupId><artifactId>junit</artifactId><scope>test</scope></dependency>
+  </dependencies>
+</project>

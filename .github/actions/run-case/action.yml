@@ -1,0 +1,22 @@
+name: Run Java CI experiment case
+description: Execute one declarative testcase against one candidate and assert the normalized result contract.
+inputs:
+  case:
+    description: Testcase path relative to the repository root
+    required: true
+  candidate:
+    description: Candidate directory name under candidates/
+    required: true
+  results-dir:
+    description: Result directory relative to the repository root
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Execute testcase
+      shell: bash
+      run: >-
+        python3 harness/run_case.py
+        --case '${{ inputs.case }}'
+        --candidate '${{ inputs.candidate }}'
+        --results-dir '${{ inputs.results-dir }}'

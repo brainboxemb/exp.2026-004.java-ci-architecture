@@ -1,0 +1,22 @@
+id = "CI-04"
+title = "Application-only source change"
+question = "Which outputs are reproduced after an application-only source change?"
+
+[setup]
+mode = "warm"
+
+[[changes]]
+path = "app/src/main/java/org/brainboxemb/ci/App.java"
+operation = "replace"
+find = "return featureA + \"+\" + featureB;"
+replace = "return new String(featureA + \"+\" + featureB);"
+
+[expect]
+tests_pass = true
+expected_test_reports = 4
+required_artifacts = [
+  "core/target/core-1.0.0-SNAPSHOT.jar",
+  "feature-a/target/feature-a-1.0.0-SNAPSHOT.jar",
+  "feature-b/target/feature-b-1.0.0-SNAPSHOT.jar",
+  "app/target/app-1.0.0-SNAPSHOT.jar",
+]
