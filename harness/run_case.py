@@ -68,6 +68,10 @@ def compare_snapshots(before: dict[str, dict[str, object]], after: dict[str, dic
     return changes
 
 
+def changed_count(changes: list[dict[str, object]], field: str = "mtime_changed") -> int:
+    return sum(1 for item in changes if bool(item[field]))
+
+
 def command_output(command: list[str], cwd: Path) -> str:
     completed = subprocess.run(command, cwd=cwd, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)
     return completed.stdout.strip()
@@ -148,12 +152,16 @@ def main() -> int:
         raise SystemExit(f"unsupported setup mode: {setup_mode}")
 
     artifacts_before = snapshot_glob(work_root, "*/target/*.jar")
+    main_classes_before = snapshot_glob(work_root, "*/target/classes/**/*.class")
+    test_classes_before = snapshot_glob(work_root, "*/target/test-classes/**/*.class")
     tests_before = snapshot_glob(work_root, "*/target/surefire-reports/TEST-*.xml")
     changed_files = apply_changes(work_root, list(case.get("changes", [])))
     fixture_input_sha256 = tree_digest(work_root)
 
     measured = execute(command, candidate_cwd, result_dir / "measured.log")
     artifacts_after = snapshot_glob(work_root, "*/target/*.jar")
+    main_classes_after = snapshot_glob(work_root, "*/target/classes/**/*.class")
+    test_classes_after = snapshot_glob(work_root, "*/target/test-classes/**/*.class")
     tests_after = snapshot_glob(work_root, "*/target/surefire-reports/TEST-*.xml")
 
     assertions: list[dict[str, object]] = []
@@ -172,7 +180,25 @@ def main() -> int:
     assertions.append({"name": "build-exit", "kind": "correctness", "passed": (measured["exit_code"] == 0) == expect_tests_pass, "exit_code": measured["exit_code"]})
 
     artifact_changes = compare_snapshots(artifacts_before, artifacts_after)
+    main_class_changes = compare_snapshots(main_classes_before, main_classes_after)
+    test_class_changes = compare_snapshots(test_classes_before, test_classes_after)
     test_report_changes = compare_snapshots(tests_before, tests_after)
+
+    measured_ms = int(measured["duration_ms"])
+    prime_ms = int(prime["duration_ms"]) if prime else None
+    saved_vs_prime_ms = (prime_ms - measured_ms) if prime_ms is not None else None
+    speedup_vs_prime_x = round(prime_ms / measured_ms, 3) if prime_ms is not None and measured_ms > 0 else None
+
+    workset = {
+        "artifact_outputs_rewritten": changed_count(artifact_changes),
+        "main_classes_rewritten": changed_count(main_class_changes),
+        "test_classes_rewritten": changed_count(test_class_changes),
+        "test_reports_rewritten": changed_count(test_report_changes),
+        "main_classes_observed": len(main_class_changes),
+        "test_classes_observed": len(test_class_changes),
+        "test_reports_observed": len(test_report_changes),
+    }
+
     passed = all(bool(item["passed"]) for item in assertions)
     candidate_maven = command_output([command[0], "--version"], candidate_cwd)
 
@@ -190,9 +216,18 @@ def main() -> int:
         "changed_files": changed_files,
         "prime": prime,
         "build": measured,
+        "timing": {
+            "prime_ms": prime_ms,
+            "measured_ms": measured_ms,
+            "saved_vs_prime_ms": saved_vs_prime_ms,
+            "speedup_vs_prime_x": speedup_vs_prime_x,
+        },
+        "workset": workset,
         "assertions": assertions,
         "observations": {
             "artifacts": artifact_changes,
+            "main_classes": main_class_changes,
+            "test_classes": test_class_changes,
             "test_reports": test_report_changes,
         },
         "test_reports": [str(p.relative_to(work_root)) for p in reports],
@@ -220,10 +255,20 @@ def main() -> int:
         f"- Status: **{result['status']}**",
         f"- Source revision: `{checked_out_sha}`",
         f"- Setup: `{setup_mode}`",
-        f"- Measured duration: {measured['duration_ms']} ms",
+        f"- Prime duration: {prime_ms if prime_ms is not None else '(none)'} ms",
+        f"- Measured duration: {measured_ms} ms",
+        f"- Saved versus prime: {saved_vs_prime_ms if saved_vs_prime_ms is not None else '(n/a)'} ms",
+        f"- Speed-up versus prime: {speedup_vs_prime_x if speedup_vs_prime_x is not None else '(n/a)'}x",
         f"- Changed fixture files: {', '.join(changed_files) if changed_files else '(none)'}",
         f"- Surefire reports: {len(reports)}",
         f"- Fixture input SHA-256: `{fixture_input_sha256}`",
+        "",
+        "## Workset",
+        "",
+        f"- JAR outputs rewritten: {workset['artifact_outputs_rewritten']}",
+        f"- Main classes rewritten: {workset['main_classes_rewritten']} / {workset['main_classes_observed']}",
+        f"- Test classes rewritten: {workset['test_classes_rewritten']} / {workset['test_classes_observed']}",
+        f"- Test reports rewritten: {workset['test_reports_rewritten']} / {workset['test_reports_observed']}",
         "",
         "## Artifact observation",
         "",
@@ -233,6 +278,21 @@ def main() -> int:
             summary.append(f"- `{item['path']}`: content_changed={str(item['content_changed']).lower()}, mtime_changed={str(item['mtime_changed']).lower()}")
     else:
         summary.append("- No module JAR outputs were observed.")
+
+    summary.extend(["", "## Main-class observation", ""])
+    if main_class_changes:
+        for item in main_class_changes:
+            summary.append(f"- `{item['path']}`: content_changed={str(item['content_changed']).lower()}, mtime_changed={str(item['mtime_changed']).lower()}")
+    else:
+        summary.append("- No main class outputs were observed before or after the measured invocation.")
+
+    summary.extend(["", "## Test-class observation", ""])
+    if test_class_changes:
+        for item in test_class_changes:
+            summary.append(f"- `{item['path']}`: content_changed={str(item['content_changed']).lower()}, mtime_changed={str(item['mtime_changed']).lower()}")
+    else:
+        summary.append("- No test class outputs were observed before or after the measured invocation.")
+
     summary.extend(["", "## Test-report observation", ""])
     if test_report_changes:
         for item in test_report_changes:
