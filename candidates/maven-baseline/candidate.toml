@@ -2,7 +2,7 @@ id = "maven-baseline"
 title = "Plain Maven verify baseline"
 kind = "command"
 working_directory = "."
-command = ["mvn", "--batch-mode", "--no-transfer-progress", "verify"]
+command = ["./mvnw", "--batch-mode", "--no-transfer-progress", "verify"]
 
 [capabilities]
 repository_affected_selection = false

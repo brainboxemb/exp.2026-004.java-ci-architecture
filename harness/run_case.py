@@ -97,10 +97,11 @@ def main() -> int:
     shutil.copytree(repo / "fixture", work_root)
 
     command = [str(v) for v in candidate["command"]]
+    candidate_cwd = work_root / str(candidate.get("working_directory", "."))
     setup_mode = str(case.get("setup", {}).get("mode", "cold"))
     prime = None
     if setup_mode == "warm":
-        prime = execute(command, work_root / str(candidate.get("working_directory", ".")), result_dir / "prime.log")
+        prime = execute(command, candidate_cwd, result_dir / "prime.log")
         if prime["exit_code"] != 0:
             raise SystemExit(f"priming invocation failed; see {result_dir / 'prime.log'}")
     elif setup_mode != "cold":
@@ -108,7 +109,7 @@ def main() -> int:
 
     before = snapshot_outputs(work_root)
     changed_files = apply_changes(work_root, list(case.get("changes", [])))
-    measured = execute(command, work_root / str(candidate.get("working_directory", ".")), result_dir / "measured.log")
+    measured = execute(command, candidate_cwd, result_dir / "measured.log")
     after = snapshot_outputs(work_root)
 
     assertions: list[dict[str, object]] = []
@@ -139,6 +140,7 @@ def main() -> int:
         })
 
     passed = all(bool(item["passed"]) for item in assertions)
+    candidate_maven = command_output([command[0], "--version"], candidate_cwd)
     result = {
         "schema": SCHEMA,
         "schema_version": SCHEMA_VERSION,
@@ -147,6 +149,7 @@ def main() -> int:
         "question": case["question"],
         "candidate": candidate["id"],
         "candidate_title": candidate["title"],
+        "candidate_capabilities": candidate.get("capabilities", {}),
         "status": "pass" if passed else "fail",
         "setup_mode": setup_mode,
         "changed_files": changed_files,
@@ -156,8 +159,8 @@ def main() -> int:
         "outputs": output_changes,
         "test_reports": [str(p.relative_to(work_root)) for p in reports],
         "toolchain": {
-            "java": command_output(["java", "-version"], work_root),
-            "maven": command_output(["mvn", "--version"], work_root),
+            "java": command_output(["java", "-version"], candidate_cwd),
+            "candidate_maven": candidate_maven,
         },
     }
     (result_dir / "result.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")

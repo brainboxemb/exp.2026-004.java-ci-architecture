@@ -1,0 +1,92 @@
+name: Java CI experiment
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    name: Discover experiment matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      cases: ${{ steps.matrix.outputs.cases }}
+      candidates: ${{ steps.matrix.outputs.candidates }}
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Discover cases and candidates
+        id: matrix
+        run: python3 harness/discover.py
+
+  testcase:
+    name: ${{ matrix.candidate }} / ${{ matrix.case }}
+    needs: discover
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        candidate: ${{ fromJSON(needs.discover.outputs.candidates) }}
+        case: ${{ fromJSON(needs.discover.outputs.cases) }}
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Java 8
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: '8.0.504+1'
+          check-latest: false
+          verify-signature: true
+          cache: maven
+          cache-dependency-path: fixture/**/pom.xml
+
+      - name: Prepare exact Maven Wrapper
+        working-directory: fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mvn --batch-mode --no-transfer-progress \
+            org.apache.maven.plugins:maven-wrapper-plugin:3.3.4:wrapper \
+            -Dmaven=3.9.16 \
+            -Dtype=only-script \
+            -DdistributionSha256Sum=5af3b743dd8b876b5c45da33b676251e5f1687712644abb4ee519ca56e1d89ce
+          chmod +x mvnw
+          ./mvnw --version
+
+      - name: Run testcase
+        uses: ./.github/actions/run-case
+        with:
+          case: ${{ matrix.case }}
+          candidate: ${{ matrix.candidate }}
+          results-dir: results/_ci/${{ matrix.candidate }}-${{ strategy.job-index }}
+
+      - name: Add readable testcase summary
+        if: always()
+        shell: bash
+        run: |
+          result_dir='results/_ci/${{ matrix.candidate }}-${{ strategy.job-index }}'
+          if [[ -f "$result_dir/README.md" ]]; then
+            cat "$result_dir/README.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload testcase evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: java-ci-${{ matrix.candidate }}-${{ strategy.job-index }}
+          path: results/_ci/${{ matrix.candidate }}-${{ strategy.job-index }}
+          if-no-files-found: error
+          retention-days: 14
