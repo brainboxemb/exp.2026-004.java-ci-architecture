@@ -19,3 +19,13 @@ required_artifacts = [
   "feature-b/target/feature-b-1.0.0-SNAPSHOT.jar",
   "app/target/app-1.0.0-SNAPSHOT.jar",
 ]
+
+[expect.candidates.maven-build-cache.workset]
+artifact_outputs_payload_changed = 0
+test_reports_content_changed = 0
+
+[expect.candidates.maven-build-cache.native_cache_sources]
+core = "LOCAL"
+feature-a = "LOCAL"
+feature-b = "LOCAL"
+app = "LOCAL"
