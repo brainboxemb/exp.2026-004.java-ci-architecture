@@ -16,6 +16,8 @@ Production migration
 
 A PoP failure is useful evidence. It means the concept or assumption needs correction; it is not a reason to weaken the testcase.
 
+The sequence above describes **initial adoption**, not the lifetime of this repository. The PoP environment remains available afterward as a repeatable qualification and regression facility.
+
 ## Control baseline
 
 The existing plain-Maven baseline is retained as the control:
@@ -110,8 +112,30 @@ Those are qualification concerns, not prerequisites for proving the basic princi
 
 ## Production handoff
 
-The experiment repository never becomes production Java tooling. When concept + PoP + required qualification support a decision, `brainboxemb.meta` records the architecture decision and may open a separate production migration with the normal owner chain:
+This repository never becomes production Java tooling. When concept + PoP + required qualification support a decision, `brainboxemb.meta` records the architecture decision and may open a separate production migration with the normal owner chain:
 
 ```text
 tool.git-project -> tool.java-project -> template.java-project -> real consumers
 ```
+
+## Reuse after production adoption
+
+After the first migration, this repository stays active as a reusable lab:
+
+```text
+migration/production issue
+        ↓
+minimal reproducible testcase here
+        ↓
+prove failure on current architecture
+        ↓
+qualify proposed correction here
+        ↓
+apply owner fix / migration
+        ↓
+retain testcase as regression coverage
+```
+
+A testcase should only be added here when the fixture/harness can represent the real problem faithfully. Product-specific behaviour that cannot be reduced without losing the failure belongs in the product owner instead.
+
+Historical cases and control baselines should remain runnable. When toolchain or architecture baselines change, add/version the required configuration rather than silently rewriting old evidence semantics.
