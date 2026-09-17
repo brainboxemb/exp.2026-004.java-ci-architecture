@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
 import tomllib
 
@@ -41,16 +42,30 @@ def tree_digest(root: Path) -> str:
     return h.hexdigest()
 
 
-def file_state(path: Path) -> dict[str, object]:
+def archive_payload_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with zipfile.ZipFile(path) as archive:
+        for info in sorted((item for item in archive.infolist() if not item.is_dir()), key=lambda item: item.filename):
+            h.update(info.filename.encode("utf-8"))
+            h.update(b"\0")
+            h.update(archive.read(info.filename))
+            h.update(b"\0")
+    return h.hexdigest()
+
+
+def file_state(path: Path, *, archive_payload: bool = False) -> dict[str, object]:
     stat = path.stat()
-    return {"sha256": sha256(path), "size": stat.st_size, "mtime_ns": stat.st_mtime_ns}
+    state: dict[str, object] = {"sha256": sha256(path), "size": stat.st_size, "mtime_ns": stat.st_mtime_ns}
+    if archive_payload:
+        state["payload_sha256"] = archive_payload_sha256(path)
+    return state
 
 
-def snapshot_glob(root: Path, pattern: str) -> dict[str, dict[str, object]]:
+def snapshot_glob(root: Path, pattern: str, *, archive_payload: bool = False) -> dict[str, dict[str, object]]:
     result: dict[str, dict[str, object]] = {}
     for path in sorted(root.glob(pattern)):
         if path.is_file():
-            result[str(path.relative_to(root))] = file_state(path)
+            result[str(path.relative_to(root))] = file_state(path, archive_payload=archive_payload)
     return result
 
 
@@ -65,6 +80,9 @@ def compare_snapshots(before: dict[str, dict[str, object]], after: dict[str, dic
             "after": a,
             "content_changed": (b or {}).get("sha256") != (a or {}).get("sha256"),
             "mtime_changed": (b or {}).get("mtime_ns") != (a or {}).get("mtime_ns"),
+            "payload_changed": (b or {}).get("payload_sha256") != (a or {}).get("payload_sha256")
+            if "payload_sha256" in (b or {}) or "payload_sha256" in (a or {})
+            else None,
         })
     return changes
 
@@ -216,7 +234,7 @@ def main() -> int:
     elif setup_mode != "cold":
         raise SystemExit(f"unsupported setup mode: {setup_mode}")
 
-    artifacts_before = snapshot_glob(work_root, "*/target/*.jar")
+    artifacts_before = snapshot_glob(work_root, "*/target/*.jar", archive_payload=True)
     main_classes_before = snapshot_glob(work_root, "*/target/classes/**/*.class")
     test_classes_before = snapshot_glob(work_root, "*/target/test-classes/**/*.class")
     tests_before = snapshot_glob(work_root, "*/target/surefire-reports/TEST-*.xml")
@@ -224,7 +242,7 @@ def main() -> int:
     fixture_input_sha256 = tree_digest(work_root)
 
     measured = execute(command, candidate_cwd, result_dir / "measured.log")
-    artifacts_after = snapshot_glob(work_root, "*/target/*.jar")
+    artifacts_after = snapshot_glob(work_root, "*/target/*.jar", archive_payload=True)
     main_classes_after = snapshot_glob(work_root, "*/target/classes/**/*.class")
     test_classes_after = snapshot_glob(work_root, "*/target/test-classes/**/*.class")
     tests_after = snapshot_glob(work_root, "*/target/surefire-reports/TEST-*.xml")
@@ -257,6 +275,7 @@ def main() -> int:
 
     workset = {
         "artifact_outputs_content_changed": changed_count(artifact_changes, "content_changed"),
+        "artifact_outputs_payload_changed": changed_count(artifact_changes, "payload_changed"),
         "artifact_outputs_mtime_changed": changed_count(artifact_changes, "mtime_changed"),
         "main_classes_content_changed": changed_count(main_class_changes, "content_changed"),
         "main_classes_mtime_changed": changed_count(main_class_changes, "mtime_changed"),
@@ -339,7 +358,7 @@ def main() -> int:
         "",
         "## Workset",
         "",
-        f"- JAR content changed: {workset['artifact_outputs_content_changed']}; filesystem timestamp changed: {workset['artifact_outputs_mtime_changed']}",
+        f"- JAR archive bytes changed: {workset['artifact_outputs_content_changed']}; payload changed: {workset['artifact_outputs_payload_changed']}; filesystem timestamp changed: {workset['artifact_outputs_mtime_changed']}",
         f"- Main-class content changed: {workset['main_classes_content_changed']} / {workset['main_classes_observed']}; timestamp changed: {workset['main_classes_mtime_changed']}",
         f"- Test-class content changed: {workset['test_classes_content_changed']} / {workset['test_classes_observed']}; timestamp changed: {workset['test_classes_mtime_changed']}",
         f"- Test-report content changed: {workset['test_reports_content_changed']} / {workset['test_reports_observed']}; timestamp changed: {workset['test_reports_mtime_changed']}",
@@ -364,7 +383,7 @@ def main() -> int:
     summary.extend(["", "## Artifact observation", ""])
     if artifact_changes:
         for item in artifact_changes:
-            summary.append(f"- `{item['path']}`: content_changed={str(item['content_changed']).lower()}, mtime_changed={str(item['mtime_changed']).lower()}")
+            summary.append(f"- `{item['path']}`: content_changed={str(item['content_changed']).lower()}, payload_changed={str(item['payload_changed']).lower()}, mtime_changed={str(item['mtime_changed']).lower()}")
     else:
         summary.append("- No module JAR outputs were observed.")
 
