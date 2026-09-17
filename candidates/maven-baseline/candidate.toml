@@ -2,9 +2,13 @@ id = "maven-baseline"
 title = "Plain Maven verify baseline"
 kind = "command"
 working_directory = "."
-command = ["./mvnw", "--batch-mode", "--no-transfer-progress", "verify"]
+
+[commands]
+default = ["./mvnw", "--batch-mode", "--no-transfer-progress", "verify"]
+forced_fresh = ["./mvnw", "--batch-mode", "--no-transfer-progress", "clean", "verify"]
 
 [capabilities]
 repository_affected_selection = false
 module_incremental_cache = false
 cross_run_output_cache = false
+forced_fresh = true
