@@ -76,4 +76,8 @@ docs/          target architecture, PoP plan and testcase contract
 
 Issue [#1](https://github.com/brainboxemb/exp.2026-004.java-ci-architecture/issues/1) established the reusable fixture, testcase contract, harness and plain-Maven control baseline.
 
-Issue [#2](https://github.com/brainboxemb/exp.2026-004.java-ci-architecture/issues/2) now defines the target architecture and minimal PoP. The next implementation work should qualify the target Maven-native build-cache mechanism against the existing control before broadening the suite.
+Issue [#2](https://github.com/brainboxemb/exp.2026-004.java-ci-architecture/issues/2) owns the target architecture and PoP/qualification work.
+
+The **local same-worktree Maven Build Cache PoP is now qualified**: the seven declarative cases prove module-level cache reuse, app-only selectivity, shared-core invalidation, code+test behaviour and test-only behaviour against native Maven cache evidence. See [`docs/05-local-maven-build-cache-pop.md`](docs/05-local-maven-build-cache-pop.md).
+
+The next phase is qualification beyond the local worktree: build-model/toolchain invalidation, forced-fresh behaviour, fresh-runner/cross-run cache transport, failure fallback and repeated performance measurements. Production repositories are not changed until that qualification supports a cross-project rollout decision.
