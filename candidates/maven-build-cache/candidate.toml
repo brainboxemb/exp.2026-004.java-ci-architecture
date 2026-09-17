@@ -1,0 +1,11 @@
+id = "maven-build-cache"
+title = "Apache Maven Build Cache 1.3.0"
+kind = "command"
+working_directory = "."
+prepare_command = ["bash", "../../../candidates/maven-build-cache/prepare.sh"]
+command = ["./mvnw", "--batch-mode", "--no-transfer-progress", "verify"]
+
+[capabilities]
+repository_affected_selection = false
+module_incremental_cache = true
+cross_run_output_cache = false
