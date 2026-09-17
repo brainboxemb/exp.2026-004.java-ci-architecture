@@ -1,0 +1,36 @@
+id = "maven-build-cache"
+title = "Apache Maven Build Cache Extension PoP"
+kind = "command"
+working_directory = "."
+overlay = "overlay"
+evidence_globs = [
+  ".maven-build-cache/**/*.xml",
+  "*/target/incremental-maven/*.xml",
+]
+input_exclude_roots = [".maven-build-cache"]
+
+[commands]
+default = [
+  "./mvnw",
+  "--batch-mode",
+  "--no-transfer-progress",
+  "-Dmaven.build.cache.location=.maven-build-cache",
+  "verify",
+]
+forced_fresh = [
+  "./mvnw",
+  "--batch-mode",
+  "--no-transfer-progress",
+  "-Dmaven.build.cache.location=.maven-build-cache",
+  "-Dmaven.build.cache.skipCache=true",
+  "-Dmaven.build.cache.skipSave=true",
+  "clean",
+  "verify",
+]
+
+[capabilities]
+repository_affected_selection = false
+module_incremental_cache = true
+cross_run_output_cache = false
+forced_fresh = true
+native_structured_evidence = true
