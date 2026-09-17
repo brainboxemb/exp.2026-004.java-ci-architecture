@@ -1,0 +1,29 @@
+id = "CI-08"
+title = "Build-model compiler setting change"
+question = "Does a relevant compiler/build-model change invalidate cached state correctly, and what work/time does it cause?"
+
+[setup]
+mode = "warm"
+
+[[changes]]
+path = "pom.xml"
+operation = "replace"
+find = "<maven.compiler.debug>true</maven.compiler.debug>"
+replace = "<maven.compiler.debug>false</maven.compiler.debug>"
+
+[expect]
+tests_pass = true
+expected_test_reports = 5
+required_artifacts = [
+  "core/target/core-1.0.0-SNAPSHOT.jar",
+  "feature-a/target/feature-a-1.0.0-SNAPSHOT.jar",
+  "feature-b/target/feature-b-1.0.0-SNAPSHOT.jar",
+  "app/target/app-1.0.0-SNAPSHOT.jar",
+]
+must_rewrite_test_reports = [
+  "core/target/surefire-reports/TEST-org.brainboxemb.ci.CoreTest.xml",
+  "feature-a/target/surefire-reports/TEST-org.brainboxemb.ci.FeatureATest.xml",
+  "feature-b/target/surefire-reports/TEST-org.brainboxemb.ci.FeatureBTest.xml",
+  "app/target/surefire-reports/TEST-org.brainboxemb.ci.AppTest.xml",
+  "app/target/surefire-reports/TEST-org.brainboxemb.ci.AppSecondaryTest.xml",
+]
