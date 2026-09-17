@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -23,16 +24,48 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def snapshot_outputs(root: Path) -> dict[str, dict[str, object]]:
+def tree_digest(root: Path) -> str:
+    h = hashlib.sha256()
+    files = []
+    for path in root.rglob("*"):
+        if not path.is_file() or "target" in path.parts:
+            continue
+        files.append(path)
+    for path in sorted(files):
+        rel = str(path.relative_to(root)).replace(os.sep, "/")
+        h.update(rel.encode("utf-8"))
+        h.update(b"\0")
+        h.update(bytes.fromhex(sha256(path)))
+        h.update(b"\0")
+    return h.hexdigest()
+
+
+def file_state(path: Path) -> dict[str, object]:
+    stat = path.stat()
+    return {"sha256": sha256(path), "size": stat.st_size, "mtime_ns": stat.st_mtime_ns}
+
+
+def snapshot_glob(root: Path, pattern: str) -> dict[str, dict[str, object]]:
     result: dict[str, dict[str, object]] = {}
-    for path in sorted(root.glob("*/target/*.jar")):
-        stat = path.stat()
-        result[str(path.relative_to(root))] = {
-            "sha256": sha256(path),
-            "size": stat.st_size,
-            "mtime_ns": stat.st_mtime_ns,
-        }
+    for path in sorted(root.glob(pattern)):
+        if path.is_file():
+            result[str(path.relative_to(root))] = file_state(path)
     return result
+
+
+def compare_snapshots(before: dict[str, dict[str, object]], after: dict[str, dict[str, object]]) -> list[dict[str, object]]:
+    changes = []
+    for rel in sorted(set(before) | set(after)):
+        b = before.get(rel)
+        a = after.get(rel)
+        changes.append({
+            "path": rel,
+            "before": b,
+            "after": a,
+            "content_changed": (b or {}).get("sha256") != (a or {}).get("sha256"),
+            "mtime_changed": (b or {}).get("mtime_ns") != (a or {}).get("mtime_ns"),
+        })
+    return changes
 
 
 def command_output(command: list[str], cwd: Path) -> str:
@@ -107,10 +140,14 @@ def main() -> int:
     elif setup_mode != "cold":
         raise SystemExit(f"unsupported setup mode: {setup_mode}")
 
-    before = snapshot_outputs(work_root)
+    artifacts_before = snapshot_glob(work_root, "*/target/*.jar")
+    tests_before = snapshot_glob(work_root, "*/target/surefire-reports/TEST-*.xml")
     changed_files = apply_changes(work_root, list(case.get("changes", [])))
+    fixture_input_sha256 = tree_digest(work_root)
+
     measured = execute(command, candidate_cwd, result_dir / "measured.log")
-    after = snapshot_outputs(work_root)
+    artifacts_after = snapshot_glob(work_root, "*/target/*.jar")
+    tests_after = snapshot_glob(work_root, "*/target/surefire-reports/TEST-*.xml")
 
     assertions: list[dict[str, object]] = []
     expected = case.get("expect", {})
@@ -127,20 +164,11 @@ def main() -> int:
     expect_tests_pass = bool(expected.get("tests_pass", True))
     assertions.append({"name": "build-exit", "kind": "correctness", "passed": (measured["exit_code"] == 0) == expect_tests_pass, "exit_code": measured["exit_code"]})
 
-    output_changes = []
-    for rel in sorted(set(before) | set(after)):
-        b = before.get(rel)
-        a = after.get(rel)
-        output_changes.append({
-            "path": rel,
-            "before": b,
-            "after": a,
-            "content_changed": (b or {}).get("sha256") != (a or {}).get("sha256"),
-            "mtime_changed": (b or {}).get("mtime_ns") != (a or {}).get("mtime_ns"),
-        })
-
+    artifact_changes = compare_snapshots(artifacts_before, artifacts_after)
+    test_report_changes = compare_snapshots(tests_before, tests_after)
     passed = all(bool(item["passed"]) for item in assertions)
     candidate_maven = command_output([command[0], "--version"], candidate_cwd)
+
     result = {
         "schema": SCHEMA,
         "schema_version": SCHEMA_VERSION,
@@ -156,11 +184,22 @@ def main() -> int:
         "prime": prime,
         "build": measured,
         "assertions": assertions,
-        "outputs": output_changes,
+        "observations": {
+            "artifacts": artifact_changes,
+            "test_reports": test_report_changes,
+        },
         "test_reports": [str(p.relative_to(work_root)) for p in reports],
         "toolchain": {
             "java": command_output(["java", "-version"], candidate_cwd),
             "candidate_maven": candidate_maven,
+        },
+        "provenance": {
+            "repository_source_revision": os.environ.get("GITHUB_SHA"),
+            "workflow_run_id": os.environ.get("GITHUB_RUN_ID"),
+            "workflow_run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+            "case_definition_sha256": sha256(case_path),
+            "candidate_definition_sha256": sha256(candidate_path),
+            "fixture_input_sha256": fixture_input_sha256,
         },
     }
     (result_dir / "result.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
@@ -174,15 +213,22 @@ def main() -> int:
         f"- Measured duration: {measured['duration_ms']} ms",
         f"- Changed fixture files: {', '.join(changed_files) if changed_files else '(none)'}",
         f"- Surefire reports: {len(reports)}",
+        f"- Fixture input SHA-256: `{fixture_input_sha256}`",
         "",
-        "## Output observation",
+        "## Artifact observation",
         "",
     ]
-    if output_changes:
-        for item in output_changes:
+    if artifact_changes:
+        for item in artifact_changes:
             summary.append(f"- `{item['path']}`: content_changed={str(item['content_changed']).lower()}, mtime_changed={str(item['mtime_changed']).lower()}")
     else:
         summary.append("- No module JAR outputs were observed.")
+    summary.extend(["", "## Test-report observation", ""])
+    if test_report_changes:
+        for item in test_report_changes:
+            summary.append(f"- `{item['path']}`: content_changed={str(item['content_changed']).lower()}, mtime_changed={str(item['mtime_changed']).lower()}")
+    else:
+        summary.append("- No Surefire reports were observed before or after the measured invocation.")
     summary.extend(["", "## Assertions", ""])
     for assertion in assertions:
         summary.append(f"- {'PASS' if assertion['passed'] else 'FAIL'} — {assertion['name']}")

@@ -11,7 +11,7 @@ A testcase has four sections:
 ```toml
 id = "CI-04"
 title = "Application-only source change"
-question = "Does an application-only change avoid invalidating independent library modules?"
+question = "Which outputs are reproduced after an application-only source change?"
 
 [setup]
 mode = "warm"
@@ -20,12 +20,11 @@ mode = "warm"
 path = "app/src/main/java/org/brainboxemb/ci/App.java"
 operation = "replace"
 find = "return featureA + featureB;"
-replace = "return featureA + featureB + \"!\";"
+replace = "return new String(featureA + featureB);"
 
 [expect]
-build_required = true
-required_artifacts = ["app/target/app-1.0.0-SNAPSHOT.jar"]
 tests_pass = true
+required_artifacts = ["app/target/app-1.0.0-SNAPSHOT.jar"]
 ```
 
 ## Setup mode
@@ -48,19 +47,31 @@ Bootstrap operations:
 
 Changes are applied by the generic harness, not the candidate.
 
-## Expectations
+## Correctness expectations
 
-Bootstrap expectations intentionally focus on candidate-independent correctness:
+Bootstrap assertions are candidate-independent:
 
-- whether a build invocation is required for the case;
-- Maven exit status;
+- Maven/candidate exit status;
 - required output artifacts;
-- test success;
-- source/output checksums and invocation timing retained in evidence.
+- expected Surefire report count.
 
-Module execution/reuse assertions will be added only with a reliable structured observation mechanism. Free-form Maven-log greps are not accepted as the long-term execution oracle.
+Correctness assertions determine testcase pass/fail.
 
-This is deliberate: the experiment must not claim module-level incremental execution before it can prove that state without fragile text matching.
+## Observations are not log greps
+
+The harness also records before/after filesystem evidence without asserting a preferred architecture yet:
+
+- module JAR SHA-256, size and modification time;
+- Surefire XML SHA-256, size and modification time;
+- whether content or modification time changed;
+- measured invocation duration;
+- exact Java/Maven runtime;
+- exact testcase, candidate and fixture-input hashes;
+- GitHub source revision/run provenance when executed in Actions.
+
+This allows the bootstrap baseline to answer questions such as “was an artifact reproduced?” and “was a test report rewritten?” without parsing human Maven log messages.
+
+A later phase may add explicit selectivity expectations once the observation contract is proven across multiple candidate types. Candidate-native structured reports (for example Moon CI reports) should be retained and normalized rather than replaced by custom text probing.
 
 ## Candidate contract
 
@@ -70,42 +81,21 @@ The generic harness invokes a candidate adapter with:
 candidate + isolated fixture worktree + testcase metadata + result directory
 ```
 
-The adapter returns structured execution information. The harness adds candidate-independent evidence and evaluates testcase assertions.
+The candidate definition supplies its command/capabilities. The harness applies the same setup/change sequence and correctness assertions around every candidate.
 
-The normalized result contains at least:
-
-```json
-{
-  "schema": "brainboxemb.java-ci-experiment-result",
-  "schema_version": 1,
-  "case": "CI-04",
-  "candidate": "maven-baseline",
-  "status": "pass",
-  "setup_mode": "warm",
-  "build": {
-    "required": true,
-    "executed": true,
-    "exit_code": 0,
-    "duration_ms": 0
-  },
-  "assertions": [],
-  "artifacts": [],
-  "toolchain": {}
-}
-```
-
-Additional candidate-specific evidence may be linked from this result, but cannot replace the normalized fields.
+The normalized result uses schema `brainboxemb.java-ci-experiment-result` version 1 and retains candidate-independent observations plus provenance.
 
 ## CI orchestration
 
 GitHub Actions:
 
-1. discovers `tests/cases/*.toml`;
-2. creates a matrix over cases and enabled candidates;
+1. discovers `tests/cases/*.toml` and `candidates/*/candidate.toml`;
+2. creates a matrix over cases and candidates;
 3. checks out one exact source revision;
 4. sets up the required Java baseline;
-5. invokes the local generic testcase Action;
-6. uploads each result directory;
-7. fails the matrix cell if assertions fail.
+5. prepares an exact Maven Wrapper when required by the fixture;
+6. invokes the local generic testcase Action;
+7. uploads each result directory;
+8. fails a matrix cell when correctness assertions fail.
 
 The workflow is orchestration. It must not duplicate testcase semantics.
