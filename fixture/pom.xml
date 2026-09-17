@@ -16,6 +16,7 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>8</maven.compiler.release>
+    <maven.compiler.debug>true</maven.compiler.debug>
     <maven.compiler.plugin.version>3.16.0</maven.compiler.plugin.version>
     <maven.surefire.plugin.version>3.5.4</maven.surefire.plugin.version>
     <junit.version>4.13.2</junit.version>
@@ -41,6 +42,7 @@
           <version>${maven.compiler.plugin.version}</version>
           <configuration>
             <release>${maven.compiler.release}</release>
+            <debug>${maven.compiler.debug}</debug>
           </configuration>
         </plugin>
         <plugin>
