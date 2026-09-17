@@ -119,7 +119,8 @@ def main() -> int:
 
     repo = Path(__file__).resolve().parents[1]
     case_path = (repo / args.case).resolve()
-    candidate_path = repo / "candidates" / args.candidate / "candidate.toml"
+    candidate_dir = repo / "candidates" / args.candidate
+    candidate_path = candidate_dir / "candidate.toml"
     case = tomllib.loads(case_path.read_text(encoding="utf-8"))
     candidate = tomllib.loads(candidate_path.read_text(encoding="utf-8"))
 
@@ -141,7 +142,15 @@ def main() -> int:
     shutil.copytree(repo / "fixture", work_root)
 
     command = [str(v) for v in candidate["command"]]
+    prepare_command = [str(v) for v in candidate.get("prepare_command", [])]
     candidate_cwd = work_root / str(candidate.get("working_directory", "."))
+
+    prepare = None
+    if prepare_command:
+        prepare = execute(prepare_command, candidate_cwd, result_dir / "prepare.log")
+        if prepare["exit_code"] != 0:
+            raise SystemExit(f"candidate preparation failed; see {result_dir / 'prepare.log'}")
+
     setup_mode = str(case.get("setup", {}).get("mode", "cold"))
     prime = None
     if setup_mode == "warm":
@@ -214,9 +223,11 @@ def main() -> int:
         "status": "pass" if passed else "fail",
         "setup_mode": setup_mode,
         "changed_files": changed_files,
+        "prepare": prepare,
         "prime": prime,
         "build": measured,
         "timing": {
+            "prepare_ms": int(prepare["duration_ms"]) if prepare else None,
             "prime_ms": prime_ms,
             "measured_ms": measured_ms,
             "saved_vs_prime_ms": saved_vs_prime_ms,
@@ -255,6 +266,7 @@ def main() -> int:
         f"- Status: **{result['status']}**",
         f"- Source revision: `{checked_out_sha}`",
         f"- Setup: `{setup_mode}`",
+        f"- Candidate preparation: {int(prepare['duration_ms']) if prepare else '(none)'} ms",
         f"- Prime duration: {prime_ms if prime_ms is not None else '(none)'} ms",
         f"- Measured duration: {measured_ms} ms",
         f"- Saved versus prime: {saved_vs_prime_ms if saved_vs_prime_ms is not None else '(n/a)'} ms",
