@@ -1,0 +1,29 @@
+id = "CI-07"
+title = "Application unit-test-only change"
+question = "When only one application unit test changes, which tests actually execute and what is the incremental cost?"
+
+[setup]
+mode = "warm"
+
+[[changes]]
+path = "app/src/test/java/org/brainboxemb/ci/AppTest.java"
+operation = "replace"
+find = "assertEquals(\"core-a+core-b\", App.message());"
+replace = "String actual = App.message();\n        assertEquals(\"core-a+core-b\", actual);"
+
+[expect]
+tests_pass = true
+expected_test_reports = 5
+required_artifacts = [
+  "core/target/core-1.0.0-SNAPSHOT.jar",
+  "feature-a/target/feature-a-1.0.0-SNAPSHOT.jar",
+  "feature-b/target/feature-b-1.0.0-SNAPSHOT.jar",
+  "app/target/app-1.0.0-SNAPSHOT.jar",
+]
+must_not_change_artifact_content = [
+  "core/target/core-1.0.0-SNAPSHOT.jar",
+  "feature-a/target/feature-a-1.0.0-SNAPSHOT.jar",
+  "feature-b/target/feature-b-1.0.0-SNAPSHOT.jar",
+  "app/target/app-1.0.0-SNAPSHOT.jar",
+]
+must_rewrite_test_reports = ["app/target/surefire-reports/TEST-org.brainboxemb.ci.AppTest.xml"]
