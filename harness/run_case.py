@@ -288,6 +288,33 @@ def main() -> int:
         "test_reports_observed": len(test_report_changes),
     }
 
+    candidate_expect = expected.get("candidates", {}).get(str(candidate["id"]), {})
+    for field, expected_value in candidate_expect.get("workset", {}).items():
+        actual_value = workset.get(str(field))
+        assertions.append({
+            "name": f"candidate-workset:{field}",
+            "kind": "qualification",
+            "passed": actual_value == expected_value,
+            "expected": expected_value,
+            "actual": actual_value,
+        })
+
+    expected_sources = candidate_expect.get("native_cache_sources", {})
+    if expected_sources:
+        actual_sources = {
+            str(project.get("artifact_id")): project.get("source")
+            for project in (native_cache or {}).get("projects", [])
+        }
+        for artifact_id, expected_source in expected_sources.items():
+            actual_source = actual_sources.get(str(artifact_id))
+            assertions.append({
+                "name": f"native-cache-source:{artifact_id}",
+                "kind": "qualification",
+                "passed": actual_source == expected_source,
+                "expected": expected_source,
+                "actual": actual_source,
+            })
+
     passed = all(bool(item["passed"]) for item in assertions)
     candidate_maven = command_output([command[0], "--version"], candidate_cwd)
 
