@@ -7,6 +7,9 @@ on:
 permissions:
   contents: read
 
+env:
+  EXPERIMENT_SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   discover:
     name: Discover experiment matrix
@@ -19,6 +22,7 @@ jobs:
       - name: Checkout exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ env.EXPERIMENT_SOURCE_REVISION }}
           persist-credentials: false
           fetch-depth: 1
       - name: Discover cases and candidates
@@ -40,6 +44,7 @@ jobs:
       - name: Checkout exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ env.EXPERIMENT_SOURCE_REVISION }}
           persist-credentials: false
           fetch-depth: 1
 

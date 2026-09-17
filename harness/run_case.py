@@ -119,6 +119,13 @@ def main() -> int:
     case = tomllib.loads(case_path.read_text(encoding="utf-8"))
     candidate = tomllib.loads(candidate_path.read_text(encoding="utf-8"))
 
+    requested_source_revision = os.environ.get("EXPERIMENT_SOURCE_REVISION")
+    checked_out_sha = command_output(["git", "rev-parse", "HEAD"], repo)
+    if requested_source_revision and checked_out_sha != requested_source_revision:
+        raise SystemExit(
+            f"checked-out source {checked_out_sha} does not match requested exact source {requested_source_revision}"
+        )
+
     result_dir = (repo / args.results_dir).resolve()
     if result_dir.exists():
         shutil.rmtree(result_dir)
@@ -194,7 +201,9 @@ def main() -> int:
             "candidate_maven": candidate_maven,
         },
         "provenance": {
-            "repository_source_revision": os.environ.get("GITHUB_SHA"),
+            "repository_source_revision": checked_out_sha,
+            "requested_source_revision": requested_source_revision,
+            "github_event_sha": os.environ.get("GITHUB_SHA"),
             "workflow_run_id": os.environ.get("GITHUB_RUN_ID"),
             "workflow_run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
             "case_definition_sha256": sha256(case_path),
@@ -209,6 +218,7 @@ def main() -> int:
         "",
         f"- Candidate: `{candidate['id']}`",
         f"- Status: **{result['status']}**",
+        f"- Source revision: `{checked_out_sha}`",
         f"- Setup: `{setup_mode}`",
         f"- Measured duration: {measured['duration_ms']} ms",
         f"- Changed fixture files: {', '.join(changed_files) if changed_files else '(none)'}",

@@ -67,7 +67,9 @@ The harness also records before/after filesystem evidence without asserting a pr
 - measured invocation duration;
 - exact Java/Maven runtime;
 - exact testcase, candidate and fixture-input hashes;
-- GitHub source revision/run provenance when executed in Actions.
+- exact checked-out repository source revision plus the GitHub event SHA/run provenance.
+
+On pull requests GitHub's event SHA may identify a synthetic merge revision. The workflow therefore resolves the intended PR-head revision explicitly, checks out that exact revision, passes it to the harness and records the event SHA separately. The harness refuses to run when the checked-out revision differs from the requested source revision.
 
 This allows the bootstrap baseline to answer questions such as “was an artifact reproduced?” and “was a test report rewritten?” without parsing human Maven log messages.
 
@@ -89,13 +91,14 @@ The normalized result uses schema `brainboxemb.java-ci-experiment-result` versio
 
 GitHub Actions:
 
-1. discovers `tests/cases/*.toml` and `candidates/*/candidate.toml`;
-2. creates a matrix over cases and candidates;
-3. checks out one exact source revision;
-4. sets up the required Java baseline;
-5. prepares an exact Maven Wrapper when required by the fixture;
-6. invokes the local generic testcase Action;
-7. uploads each result directory;
-8. fails a matrix cell when correctness assertions fail.
+1. resolves the exact source revision (PR head for pull requests, event SHA otherwise);
+2. discovers `tests/cases/*.toml` and `candidates/*/candidate.toml` from that exact source;
+3. creates a matrix over cases and candidates;
+4. checks out the same exact source revision in every testcase job;
+5. sets up the required Java baseline;
+6. prepares an exact Maven Wrapper when required by the fixture;
+7. invokes the local generic testcase Action;
+8. uploads each result directory;
+9. fails a matrix cell when correctness assertions fail.
 
 The workflow is orchestration. It must not duplicate testcase semantics.
