@@ -1,12 +1,12 @@
-# Research question
+# Problem statement and PoP questions
 
-## Primary question
+## Problem
 
-What generic Java/software CI architecture gives correct, reproducible and understandable incremental execution while avoiding unnecessary builds, tests and hosted-runner usage?
+The Java/software CI architecture should provide correct, reproducible and understandable incremental execution while avoiding unnecessary builds, tests and hosted-runner usage.
 
-## Boundaries
+This repository does not answer that problem by blindly comparing every possible architecture. The target concept is designed first in [`02-target-architecture.md`](02-target-architecture.md); the PoP then checks the runtime-sensitive assumptions that need empirical evidence.
 
-The experiment separates four concerns that are often conflated:
+## Concerns that must remain distinct
 
 1. **Repository affected selection** — should Java work start at all?
 2. **Module/task invalidation** — which parts of a multi-module build are invalidated by a change?
@@ -15,22 +15,42 @@ The experiment separates four concerns that are often conflated:
 
 Dependency-download caching is measured separately from build-output caching. A warm Maven repository is not evidence of an incremental build.
 
-## Baseline
+## Existing architectural baseline
 
-The production model established before this experiment already performs repository-level affected selection and selective Windows qualification, while Maven remains Java build/test authority. When Java is selected, canonical execution still runs Maven `verify`; Moon tasks in consumers are impact declarations rather than cached Java build tasks.
+Migration 006 already established:
 
-The experiment does not assume this division remains optimal at module level.
+- GitHub Actions owns runner/job orchestration;
+- Moon/generic tooling provides repository/capability affected selection;
+- Maven remains Java build/test authority;
+- Windows qualification is event-sensitive rather than an unconditional matrix;
+- canonical build output is prepared once and publication does not rebuild Maven.
 
-## Candidate families
+The new concept extends this with module-level build-output reuse while preserving those boundaries.
 
-The experiment will compare at least:
+## Target mechanism under PoP
 
-- current/plain Maven build behaviour as a control;
-- Apache Maven Build Cache Extension;
-- Moon task/output caching;
-- a hybrid where Moon owns repository/task orchestration and Maven owns module-level build/cache semantics.
+The target mechanism to qualify first is Maven-native build caching, because module-level build/test reuse belongs naturally inside Maven's project graph and lifecycle if the mechanism proves correct, observable and portable in CI.
 
-Candidates may be refined as evidence develops. The testcase contract must remain independent of the preferred candidate.
+Moon task/output caching remains a possible alternative or complementary mechanism when a concrete PoP result shows that the target mechanism cannot satisfy a requirement. It is not implemented solely to create a comparison tournament.
+
+## PoP questions
+
+The first PoP must establish whether the target mechanism can:
+
+- reuse unchanged module work without silently skipping required tests/plugins;
+- invalidate affected dependents correctly after shared/core changes;
+- avoid unnecessary upstream/independent work for application-only changes;
+- invalidate cache state for relevant build-model/toolchain inputs;
+- hydrate eligible state on a fresh GitHub-hosted runner;
+- expose reliable execute/reuse/miss evidence;
+- retain a cache-disabled forced-fresh path for correctness-sensitive qualification;
+- deliver enough benefit to justify its complexity/overhead.
+
+See [`03-pop-plan.md`](03-pop-plan.md) for the minimal testcase set.
+
+## Permanent role
+
+After initial adoption, this repository remains the reusable PoP/qualification/regression environment for the Java CI architecture. New migration or production defects should be reduced to repeatable cases here when practical, and successful fixes should leave those cases behind as regression coverage.
 
 ## Decision criteria
 
@@ -47,4 +67,4 @@ A production recommendation must explain:
 - complexity and maintenance cost;
 - wall time and hosted-runner cost.
 
-A faster candidate that cannot prove correct invalidation is not a valid winner.
+A faster mechanism that cannot prove correct invalidation is not acceptable.
