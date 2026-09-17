@@ -13,7 +13,7 @@ from pathlib import Path
 import tomllib
 
 SCHEMA = "brainboxemb.java-ci-experiment-result"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def sha256(path: Path) -> str:
@@ -24,11 +24,17 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def tree_digest(root: Path) -> str:
+def tree_digest(root: Path, exclude_roots: set[str] | None = None) -> str:
     h = hashlib.sha256()
     files = []
+    excluded = exclude_roots or set()
     for path in root.rglob("*"):
-        if not path.is_file() or "target" in path.parts:
+        if not path.is_file():
+            continue
+        rel = path.relative_to(root)
+        if "target" in rel.parts:
+            continue
+        if rel.parts and rel.parts[0] in excluded:
             continue
         files.append(path)
     for path in sorted(files):
@@ -78,7 +84,13 @@ def execute(command: list[str], cwd: Path, log: Path) -> dict[str, object]:
     with log.open("w", encoding="utf-8") as fh:
         completed = subprocess.run(command, cwd=cwd, text=True, stdout=fh, stderr=subprocess.STDOUT, check=False)
     duration_ms = (time.monotonic_ns() - start) // 1_000_000
-    return {"executed": True, "exit_code": completed.returncode, "duration_ms": duration_ms, "log": log.name}
+    return {
+        "executed": True,
+        "exit_code": completed.returncode,
+        "duration_ms": duration_ms,
+        "log": log.name,
+        "command": command,
+    }
 
 
 def apply_changes(root: Path, changes: list[dict[str, object]]) -> list[str]:
@@ -106,6 +118,96 @@ def apply_changes(root: Path, changes: list[dict[str, object]]) -> list[str]:
     return changed
 
 
+def apply_overlay(candidate_dir: Path, candidate: dict[str, object], work_root: Path) -> str | None:
+    overlay_name = candidate.get("overlay")
+    if not overlay_name:
+        return None
+    overlay = candidate_dir / str(overlay_name)
+    if not overlay.is_dir():
+        raise RuntimeError(f"candidate overlay does not exist: {overlay}")
+    shutil.copytree(overlay, work_root, dirs_exist_ok=True)
+    return tree_digest(overlay)
+
+
+def candidate_command(candidate: dict[str, object], mode: str) -> list[str]:
+    commands = candidate.get("commands")
+    if isinstance(commands, dict):
+        command = commands.get(mode)
+    elif mode == "default":
+        command = candidate.get("command")
+    else:
+        command = None
+    if not isinstance(command, list) or not command:
+        raise RuntimeError(f"candidate {candidate.get('id')} does not provide command mode {mode!r}")
+    return [str(value) for value in command]
+
+
+def change_map(items: list[dict[str, object]]) -> dict[str, dict[str, object]]:
+    return {str(item["path"]): item for item in items}
+
+
+def collect_native_evidence(work_root: Path, result_dir: Path, patterns: list[str]) -> list[dict[str, object]]:
+    collected: list[dict[str, object]] = []
+    destination_root = result_dir / "native-evidence"
+    seen: set[str] = set()
+    for pattern in patterns:
+        for path in sorted(work_root.glob(pattern)):
+            if not path.is_file():
+                continue
+            rel = str(path.relative_to(work_root))
+            if rel in seen:
+                continue
+            seen.add(rel)
+            destination = destination_root / rel
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, destination)
+            state = file_state(path)
+            collected.append({"path": rel, **state})
+    return collected
+
+
+def add_change_assertions(
+    assertions: list[dict[str, object]],
+    expected: dict[str, object],
+    artifact_changes: list[dict[str, object]],
+    test_report_changes: list[dict[str, object]],
+) -> None:
+    artifact_map = change_map(artifact_changes)
+    test_map = change_map(test_report_changes)
+
+    for rel in [str(v) for v in expected.get("must_change_artifact_content", [])]:
+        item = artifact_map.get(rel)
+        assertions.append({
+            "name": f"artifact-content-changed:{rel}",
+            "kind": "correctness",
+            "passed": bool(item and item.get("content_changed")),
+        })
+
+    for rel in [str(v) for v in expected.get("must_not_change_artifact_content", [])]:
+        item = artifact_map.get(rel)
+        assertions.append({
+            "name": f"artifact-content-unchanged:{rel}",
+            "kind": "correctness",
+            "passed": bool(item is not None and not item.get("content_changed")),
+        })
+
+    for rel in [str(v) for v in expected.get("must_rewrite_test_reports", [])]:
+        item = test_map.get(rel)
+        assertions.append({
+            "name": f"test-report-rewritten:{rel}",
+            "kind": "correctness",
+            "passed": bool(item and item.get("mtime_changed")),
+        })
+
+    for rel in [str(v) for v in expected.get("must_not_rewrite_test_reports", [])]:
+        item = test_map.get(rel)
+        assertions.append({
+            "name": f"test-report-not-rewritten:{rel}",
+            "kind": "correctness",
+            "passed": bool(item is not None and not item.get("mtime_changed")),
+        })
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", required=True)
@@ -115,7 +217,8 @@ def main() -> int:
 
     repo = Path(__file__).resolve().parents[1]
     case_path = (repo / args.case).resolve()
-    candidate_path = repo / "candidates" / args.candidate / "candidate.toml"
+    candidate_dir = repo / "candidates" / args.candidate
+    candidate_path = candidate_dir / "candidate.toml"
     case = tomllib.loads(case_path.read_text(encoding="utf-8"))
     candidate = tomllib.loads(candidate_path.read_text(encoding="utf-8"))
 
@@ -135,13 +238,18 @@ def main() -> int:
     if work_root.exists():
         shutil.rmtree(work_root)
     shutil.copytree(repo / "fixture", work_root)
+    candidate_overlay_sha256 = apply_overlay(candidate_dir, candidate, work_root)
 
-    command = [str(v) for v in candidate["command"]]
     candidate_cwd = work_root / str(candidate.get("working_directory", "."))
-    setup_mode = str(case.get("setup", {}).get("mode", "cold"))
+    default_command = candidate_command(candidate, "default")
+    setup = case.get("setup", {})
+    setup_mode = str(setup.get("mode", "cold"))
     prime = None
     if setup_mode == "warm":
-        prime = execute(command, candidate_cwd, result_dir / "prime.log")
+        prime_mode = str(setup.get("prime_command_mode", "default"))
+        prime_command = candidate_command(candidate, prime_mode)
+        prime = execute(prime_command, candidate_cwd, result_dir / "prime.log")
+        prime["command_mode"] = prime_mode
         if prime["exit_code"] != 0:
             raise SystemExit(f"priming invocation failed; see {result_dir / 'prime.log'}")
     elif setup_mode != "cold":
@@ -150,9 +258,13 @@ def main() -> int:
     artifacts_before = snapshot_glob(work_root, "*/target/*.jar")
     tests_before = snapshot_glob(work_root, "*/target/surefire-reports/TEST-*.xml")
     changed_files = apply_changes(work_root, list(case.get("changes", [])))
-    fixture_input_sha256 = tree_digest(work_root)
+    input_exclude_roots = {str(v) for v in candidate.get("input_exclude_roots", [])}
+    fixture_input_sha256 = tree_digest(work_root, input_exclude_roots)
 
-    measured = execute(command, candidate_cwd, result_dir / "measured.log")
+    execution_mode = str(case.get("execution", {}).get("mode", "default"))
+    measured_command = candidate_command(candidate, execution_mode)
+    measured = execute(measured_command, candidate_cwd, result_dir / "measured.log")
+    measured["command_mode"] = execution_mode
     artifacts_after = snapshot_glob(work_root, "*/target/*.jar")
     tests_after = snapshot_glob(work_root, "*/target/surefire-reports/TEST-*.xml")
 
@@ -166,15 +278,41 @@ def main() -> int:
     reports = sorted(work_root.glob("*/target/surefire-reports/TEST-*.xml"))
     expected_reports = int(expected.get("expected_test_reports", 0))
     if expected_reports:
-        assertions.append({"name": "test-report-count", "kind": "correctness", "passed": len(reports) == expected_reports, "expected": expected_reports, "actual": len(reports)})
+        assertions.append({
+            "name": "test-report-count",
+            "kind": "correctness",
+            "passed": len(reports) == expected_reports,
+            "expected": expected_reports,
+            "actual": len(reports),
+        })
 
     expect_tests_pass = bool(expected.get("tests_pass", True))
-    assertions.append({"name": "build-exit", "kind": "correctness", "passed": (measured["exit_code"] == 0) == expect_tests_pass, "exit_code": measured["exit_code"]})
+    assertions.append({
+        "name": "build-exit",
+        "kind": "correctness",
+        "passed": (measured["exit_code"] == 0) == expect_tests_pass,
+        "exit_code": measured["exit_code"],
+    })
 
     artifact_changes = compare_snapshots(artifacts_before, artifacts_after)
     test_report_changes = compare_snapshots(tests_before, tests_after)
+    add_change_assertions(assertions, expected, artifact_changes, test_report_changes)
+
+    native_evidence = collect_native_evidence(
+        work_root,
+        result_dir,
+        [str(v) for v in candidate.get("evidence_globs", [])],
+    )
+    if bool(candidate.get("capabilities", {}).get("native_structured_evidence", False)):
+        assertions.append({
+            "name": "native-structured-evidence",
+            "kind": "evidence",
+            "passed": bool(native_evidence),
+            "count": len(native_evidence),
+        })
+
     passed = all(bool(item["passed"]) for item in assertions)
-    candidate_maven = command_output([command[0], "--version"], candidate_cwd)
+    candidate_maven = command_output([default_command[0], "--version"], candidate_cwd)
 
     result = {
         "schema": SCHEMA,
@@ -187,6 +325,7 @@ def main() -> int:
         "candidate_capabilities": candidate.get("capabilities", {}),
         "status": "pass" if passed else "fail",
         "setup_mode": setup_mode,
+        "execution_mode": execution_mode,
         "changed_files": changed_files,
         "prime": prime,
         "build": measured,
@@ -194,6 +333,7 @@ def main() -> int:
         "observations": {
             "artifacts": artifact_changes,
             "test_reports": test_report_changes,
+            "native_evidence": native_evidence,
         },
         "test_reports": [str(p.relative_to(work_root)) for p in reports],
         "toolchain": {
@@ -208,6 +348,7 @@ def main() -> int:
             "workflow_run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
             "case_definition_sha256": sha256(case_path),
             "candidate_definition_sha256": sha256(candidate_path),
+            "candidate_overlay_sha256": candidate_overlay_sha256,
             "fixture_input_sha256": fixture_input_sha256,
         },
     }
@@ -220,9 +361,11 @@ def main() -> int:
         f"- Status: **{result['status']}**",
         f"- Source revision: `{checked_out_sha}`",
         f"- Setup: `{setup_mode}`",
+        f"- Execution mode: `{execution_mode}`",
         f"- Measured duration: {measured['duration_ms']} ms",
         f"- Changed fixture files: {', '.join(changed_files) if changed_files else '(none)'}",
         f"- Surefire reports: {len(reports)}",
+        f"- Native evidence files: {len(native_evidence)}",
         f"- Fixture input SHA-256: `{fixture_input_sha256}`",
         "",
         "## Artifact observation",
@@ -230,13 +373,19 @@ def main() -> int:
     ]
     if artifact_changes:
         for item in artifact_changes:
-            summary.append(f"- `{item['path']}`: content_changed={str(item['content_changed']).lower()}, mtime_changed={str(item['mtime_changed']).lower()}")
+            summary.append(
+                f"- `{item['path']}`: content_changed={str(item['content_changed']).lower()}, "
+                f"mtime_changed={str(item['mtime_changed']).lower()}"
+            )
     else:
         summary.append("- No module JAR outputs were observed.")
     summary.extend(["", "## Test-report observation", ""])
     if test_report_changes:
         for item in test_report_changes:
-            summary.append(f"- `{item['path']}`: content_changed={str(item['content_changed']).lower()}, mtime_changed={str(item['mtime_changed']).lower()}")
+            summary.append(
+                f"- `{item['path']}`: content_changed={str(item['content_changed']).lower()}, "
+                f"mtime_changed={str(item['mtime_changed']).lower()}"
+            )
     else:
         summary.append("- No Surefire reports were observed before or after the measured invocation.")
     summary.extend(["", "## Assertions", ""])
