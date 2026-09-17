@@ -1,0 +1,16 @@
+id = "CI-01"
+title = "Cold clean build"
+question = "Can the candidate build and test the complete fixture correctly from a cold worktree?"
+
+[setup]
+mode = "cold"
+
+[expect]
+tests_pass = true
+expected_test_reports = 4
+required_artifacts = [
+  "core/target/core-1.0.0-SNAPSHOT.jar",
+  "feature-a/target/feature-a-1.0.0-SNAPSHOT.jar",
+  "feature-b/target/feature-b-1.0.0-SNAPSHOT.jar",
+  "app/target/app-1.0.0-SNAPSHOT.jar",
+]

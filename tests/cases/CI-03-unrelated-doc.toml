@@ -1,0 +1,21 @@
+id = "CI-03"
+title = "Unrelated documentation change"
+question = "What Java/build work is repeated after only fixture documentation changes?"
+
+[setup]
+mode = "warm"
+
+[[changes]]
+path = "README.md"
+operation = "append"
+text = "\nControlled documentation-only testcase change.\n"
+
+[expect]
+tests_pass = true
+expected_test_reports = 4
+required_artifacts = [
+  "core/target/core-1.0.0-SNAPSHOT.jar",
+  "feature-a/target/feature-a-1.0.0-SNAPSHOT.jar",
+  "feature-b/target/feature-b-1.0.0-SNAPSHOT.jar",
+  "app/target/app-1.0.0-SNAPSHOT.jar",
+]

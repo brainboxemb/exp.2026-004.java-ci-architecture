@@ -1,0 +1,22 @@
+id = "CI-05"
+title = "Shared core source change"
+question = "Which dependent outputs are invalidated after the shared core source changes?"
+
+[setup]
+mode = "warm"
+
+[[changes]]
+path = "core/src/main/java/org/brainboxemb/ci/Core.java"
+operation = "replace"
+find = "return \"core\";"
+replace = "return new String(\"core\");"
+
+[expect]
+tests_pass = true
+expected_test_reports = 4
+required_artifacts = [
+  "core/target/core-1.0.0-SNAPSHOT.jar",
+  "feature-a/target/feature-a-1.0.0-SNAPSHOT.jar",
+  "feature-b/target/feature-b-1.0.0-SNAPSHOT.jar",
+  "app/target/app-1.0.0-SNAPSHOT.jar",
+]
