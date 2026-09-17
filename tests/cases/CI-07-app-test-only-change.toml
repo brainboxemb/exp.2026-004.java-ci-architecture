@@ -1,0 +1,22 @@
+id = "CI-07"
+title = "Application unit-test-only change"
+question = "What production compilation, test compilation and test execution work is repeated when only one application unit test changes?"
+
+[setup]
+mode = "warm"
+
+[[changes]]
+path = "app/src/test/java/org/brainboxemb/ci/AppTest.java"
+operation = "replace"
+find = "assertEquals(\"core-a+core-b\", App.message());"
+replace = "assertEquals(\"test-only:\" + \"core-a+core-b\", \"test-only:\" + App.message());"
+
+[expect]
+tests_pass = true
+expected_test_reports = 5
+required_artifacts = [
+  "core/target/core-1.0.0-SNAPSHOT.jar",
+  "feature-a/target/feature-a-1.0.0-SNAPSHOT.jar",
+  "feature-b/target/feature-b-1.0.0-SNAPSHOT.jar",
+  "app/target/app-1.0.0-SNAPSHOT.jar",
+]
