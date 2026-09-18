@@ -182,14 +182,15 @@ The qualified Maven Build Cache configuration therefore attaches `surefire-repor
 
 Not every event should maximize cache reuse.
 
-The target policy is:
+The qualified policy is:
 
-- normal PR/local CI: ordinary Maven by default; cache reads/writes only when the project explicitly enables a qualified cache mode;
+- normal PR/local/main canonical CI: project-selected `none | local | shared`, provided all material source/model/runtime/product inputs participate in cache validity;
 - fresh-runner testcase: explicitly prove cross-run hydration;
 - cache diagnostics: allow read-only, write-only or disabled modes where useful;
-- exact release qualification: correctness takes precedence over cache speed; the release path must support forcing a fresh Maven execution rather than depending on a prior cached result.
+- protected-main/release publication: reuse prepared canonical output and never rebuild merely to publish;
+- exact release qualification: use fresh/empty module output with build-output cache mode `none`; dependency caching remains allowed; native Windows full qualification likewise remains fresh.
 
-The exact production release setting is a later qualification decision. The PoP must prove that a cache-disabled/fresh path remains available and produces the expected artifacts/tests.
+The exact-tag boundary is intentionally stricter than normal canonical CI even when the tag identifies a source commit already qualified on main. See [`11-release-cache-policy.md`](11-release-cache-policy.md).
 
 ## Evidence contract
 
@@ -217,7 +218,7 @@ These are not open candidate competitions:
 4. Module-level reuse should stay inside Maven semantics if Maven-native caching proves fit for purpose.
 5. Dependency caching and build-output caching are separate concerns.
 6. Publication reuses canonical build output and never rebuilds merely to publish.
-7. Release qualification must retain a forced-fresh path.
+7. Exact-tag release qualification uses a fresh/empty module-output producer with Maven build-output cache reads/writes disabled; dependency caching remains allowed.
 8. Build-output caching is optional and project-configurable; `none` remains a valid first-class mode.
 
 ### Questions that require PoP evidence
