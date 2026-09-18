@@ -1,0 +1,45 @@
+id = "CI-09"
+title = "Application POM plugin-configuration change"
+question = "Does an app-local build-plugin configuration change invalidate only the app module while reusing unaffected upstream modules?"
+
+[setup]
+mode = "warm"
+
+[[changes]]
+path = "app/pom.xml"
+operation = "replace"
+find = """  </dependencies>
+</project>"""
+replace = """  </dependencies>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <trimStackTrace>true</trimStackTrace>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>"""
+
+[expect]
+tests_pass = true
+expected_test_reports = 5
+required_artifacts = [
+  "core/target/core-1.0.0-SNAPSHOT.jar",
+  "feature-a/target/feature-a-1.0.0-SNAPSHOT.jar",
+  "feature-b/target/feature-b-1.0.0-SNAPSHOT.jar",
+  "app/target/app-1.0.0-SNAPSHOT.jar",
+]
+
+[expect.candidates.maven-build-cache.workset]
+artifact_outputs_payload_changed = 1
+test_reports_content_changed = 2
+
+[expect.candidates.maven-build-cache.native_cache_sources]
+core = "LOCAL"
+feature-a = "LOCAL"
+feature-b = "LOCAL"
+app = "BUILD"
