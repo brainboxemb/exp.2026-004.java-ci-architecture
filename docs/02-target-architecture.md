@@ -12,7 +12,7 @@ The desired result is:
 - affected Java builds remain one understandable Maven lifecycle;
 - unchanged Maven modules may reuse validated outputs instead of repeating work;
 - changed modules and their affected dependents are invalidated correctly;
-- fresh CI runners can reuse eligible outputs across runs;
+- fresh CI runners can reuse eligible outputs through an explicit shared transport;
 - release/platform qualification can deliberately force fresh execution where required;
 - execute/reuse/skip decisions are retained as evidence.
 
@@ -99,6 +99,8 @@ shared
 
 `none` is the safe initial/default mode. Projects opt into `local` or `shared` when repository size, module count or test/build cost makes the optimisation worthwhile.
 
+For the first qualified `shared` implementation, GitHub Actions transports Maven's **local build-cache directory** between hosted runners. GitHub does not decide module validity and does not become a second Java build-cache engine; Maven still owns cache keys and restore semantics. This qualification proves fresh-runner/cross-job reuse. Retention across separate workflow runs is a distinct question and is not implied by that result.
+
 Forced-fresh execution is **orthogonal** to the configured mode. Qualification/release diagnostics must be able to disable cache reads and execute the ordinary Maven lifecycle without introducing a second build architecture. The Maven Build Cache extension provides this through `maven.build.cache.skipCache`; cache saving can be disabled separately when a qualification run must neither consume nor publish cached state.
 
 ## Cache layers are separate
@@ -115,7 +117,7 @@ Maven build-output cache
 
 A warm `~/.m2/repository` alone is not evidence of an incremental build.
 
-Likewise, same-worktree Maven behaviour is not evidence that reuse works on a fresh hosted runner. Cross-run reuse requires an explicit transport/remote-cache boundary and its own testcase.
+Likewise, same-worktree Maven behaviour is not evidence that reuse works on a fresh hosted runner. Fresh-runner reuse requires an explicit transport/remote-cache boundary and its own testcase.
 
 ## Normal CI flow
 
@@ -143,6 +145,28 @@ publication reuses canonical prepared output
 ```
 
 The Windows event policy from Migration 006 remains unchanged by this PoP. Incremental Java execution must not accidentally make ordinary protected-main publication allocate Windows runners again.
+
+## Runtime identity and retained test evidence
+
+The PoP exposed two constraints that are now part of the target design.
+
+### Runtime-separated cache namespace
+
+Apache Maven Build Cache 1.3.0 did not, in the fixture, automatically invalidate cached module state when the actual JDK running Maven changed from Java 8 to Java 17. Therefore the shared Java cache adapter must partition cache storage by the relevant runtime identity before Maven performs module-level lookup.
+
+The qualified namespace fingerprint includes:
+
+- JDK release metadata from the selected `JAVA_HOME`;
+- operating system and architecture;
+- exact Maven Wrapper properties identity.
+
+This is a correctness boundary, not merely a cache-performance key. A runtime identity change selects a different Maven build-cache namespace and therefore cannot accidentally consume state produced under the previous runtime.
+
+### Surefire reports are cache outputs
+
+Module reuse can legitimately skip test execution. On a fresh runner, however, skipped tests leave no local Surefire XML unless those reports are restored as part of the validated module output.
+
+The qualified Maven Build Cache configuration therefore attaches `surefire-reports` as additional cached output. Fresh-runner reuse must restore both the canonical artifacts and the test evidence expected by CI.
 
 ## Qualification boundaries
 
@@ -195,5 +219,6 @@ These are not open candidate competitions:
 5. Can eligible build outputs be restored on a fresh GitHub runner without stale or missing state?
 6. Can execute/reuse/miss decisions be retained as reliable structured evidence?
 7. Is the overhead worthwhile for the scale of our Java repositories?
+8. If shared cache retention beyond one workflow execution is needed, does it remain reliable across separate workflow runs and retention windows?
 
 If these principles pass, later qualification expands edge/error/platform coverage. If a principle fails, change the concept first; do not hide the failure by weakening the testcase.

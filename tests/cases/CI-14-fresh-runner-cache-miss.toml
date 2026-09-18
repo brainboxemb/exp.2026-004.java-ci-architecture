@@ -1,0 +1,28 @@
+id = "CI-14"
+title = "Fresh-runner cache miss fallback"
+question = "Does a fresh hosted runner with an explicit shared-cache transport miss fall back to a complete correct Maven build?"
+
+[setup]
+mode = "fresh-cache-miss"
+
+[qualification]
+candidate = "maven-build-cache"
+
+[expect]
+tests_pass = true
+expected_test_reports = 5
+required_artifacts = [
+  "core/target/core-1.0.0-SNAPSHOT.jar",
+  "feature-a/target/feature-a-1.0.0-SNAPSHOT.jar",
+  "feature-b/target/feature-b-1.0.0-SNAPSHOT.jar",
+  "app/target/app-1.0.0-SNAPSHOT.jar",
+]
+
+[expect.cross_run]
+transport_hit = false
+
+[expect.candidates.maven-build-cache.native_cache_sources]
+core = "BUILD"
+feature-a = "BUILD"
+feature-b = "BUILD"
+app = "BUILD"

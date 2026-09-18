@@ -15,7 +15,7 @@ from pathlib import Path
 import tomllib
 
 SCHEMA = "brainboxemb.java-ci-experiment-result"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def sha256(path: Path) -> str:
@@ -91,15 +91,53 @@ def changed_count(changes: list[dict[str, object]], field: str) -> int:
     return sum(1 for item in changes if bool(item[field]))
 
 
-def command_output(command: list[str], cwd: Path) -> str:
-    completed = subprocess.run(command, cwd=cwd, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)
+def resolve_env_from(mapping: dict[str, object]) -> dict[str, str]:
+    resolved: dict[str, str] = {}
+    for target, source in mapping.items():
+        source_name = str(source)
+        value = os.environ.get(source_name)
+        if value is None:
+            raise RuntimeError(f"required environment variable is not available: {source_name}")
+        resolved[str(target)] = value
+    return resolved
+
+
+def command_output(command: list[str], cwd: Path, env_overrides: dict[str, str] | None = None) -> str:
+    env = os.environ.copy()
+    if env_overrides:
+        env.update(env_overrides)
+    completed = subprocess.run(
+        command,
+        cwd=cwd,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
     return completed.stdout.strip()
 
 
-def execute(command: list[str], cwd: Path, log: Path) -> dict[str, object]:
+def execute(
+    command: list[str],
+    cwd: Path,
+    log: Path,
+    env_overrides: dict[str, str] | None = None,
+) -> dict[str, object]:
+    env = os.environ.copy()
+    if env_overrides:
+        env.update(env_overrides)
     start = time.monotonic_ns()
     with log.open("w", encoding="utf-8") as fh:
-        completed = subprocess.run(command, cwd=cwd, text=True, stdout=fh, stderr=subprocess.STDOUT, check=False)
+        completed = subprocess.run(
+            command,
+            cwd=cwd,
+            env=env,
+            text=True,
+            stdout=fh,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
     duration_ms = (time.monotonic_ns() - start) // 1_000_000
     return {"executed": True, "exit_code": completed.returncode, "duration_ms": duration_ms, "log": log.name}
 
@@ -220,9 +258,17 @@ def main() -> int:
     command = [str(v) for v in candidate["command"]]
     prepare_command = [str(v) for v in candidate.get("prepare_command", [])]
     candidate_cwd = work_root / str(candidate.get("working_directory", "."))
-    candidate_execution = case.get("execute", {}).get("candidates", {}).get(str(candidate["id"]), {})
-    measured_append = [str(v) for v in candidate_execution.get("measured_append", [])]
+    execution = case.get("execute", {})
+    candidate_execution = execution.get("candidates", {}).get(str(candidate["id"]), {})
+    measured_append = [str(v) for v in execution.get("measured_append", [])]
+    measured_append += [str(v) for v in candidate_execution.get("measured_append", [])]
     measured_command = command + measured_append
+    prime_env_from = dict(execution.get("prime_env_from", {}))
+    prime_env_from.update(candidate_execution.get("prime_env_from", {}))
+    measured_env_from = dict(execution.get("measured_env_from", {}))
+    measured_env_from.update(candidate_execution.get("measured_env_from", {}))
+    prime_env = resolve_env_from(prime_env_from)
+    measured_env = resolve_env_from(measured_env_from)
 
     prepare = None
     if prepare_command:
@@ -233,7 +279,7 @@ def main() -> int:
     setup_mode = str(case.get("setup", {}).get("mode", "cold"))
     prime = None
     if setup_mode == "warm":
-        prime = execute(command, candidate_cwd, result_dir / "prime.log")
+        prime = execute(command, candidate_cwd, result_dir / "prime.log", prime_env)
         if prime["exit_code"] != 0:
             raise SystemExit(f"priming invocation failed; see {result_dir / 'prime.log'}")
     elif setup_mode != "cold":
@@ -246,7 +292,7 @@ def main() -> int:
     changed_files = apply_changes(work_root, list(case.get("changes", [])))
     fixture_input_sha256 = tree_digest(work_root)
 
-    measured = execute(measured_command, candidate_cwd, result_dir / "measured.log")
+    measured = execute(measured_command, candidate_cwd, result_dir / "measured.log", measured_env)
     artifacts_after = snapshot_glob(work_root, "*/target/*.jar", archive_payload=True)
     main_classes_after = snapshot_glob(work_root, "*/target/classes/**/*.class")
     test_classes_after = snapshot_glob(work_root, "*/target/test-classes/**/*.class")
@@ -342,7 +388,9 @@ def main() -> int:
             })
 
     passed = all(bool(item["passed"]) for item in assertions)
-    candidate_maven = command_output([command[0], "--version"], candidate_cwd)
+    version_command = command[:-1] + ["--version"]
+    prime_maven = command_output(version_command, candidate_cwd, prime_env) if prime else None
+    measured_maven = command_output(version_command, candidate_cwd, measured_env)
 
     result = {
         "schema": SCHEMA,
@@ -360,6 +408,8 @@ def main() -> int:
             "base_command": command,
             "measured_append": measured_append,
             "measured_command": measured_command,
+            "prime_env_from": prime_env_from,
+            "measured_env_from": measured_env_from,
         },
         "prepare": prepare,
         "prime": prime,
@@ -383,8 +433,8 @@ def main() -> int:
         },
         "test_reports": [str(p.relative_to(work_root)) for p in reports],
         "toolchain": {
-            "java": command_output(["java", "-version"], candidate_cwd),
-            "candidate_maven": candidate_maven,
+            "prime_maven": prime_maven,
+            "measured_maven": measured_maven,
         },
         "provenance": {
             "repository_source_revision": checked_out_sha,
@@ -413,6 +463,8 @@ def main() -> int:
         f"- Speed-up versus prime: {speedup_vs_prime_x if speedup_vs_prime_x is not None else '(n/a)'}x",
         f"- Changed fixture files: {', '.join(changed_files) if changed_files else '(none)'}",
         f"- Measured command: `{' '.join(measured_command)}`",
+        f"- Prime env sources: {prime_env_from if prime_env_from else '(default)'}",
+        f"- Measured env sources: {measured_env_from if measured_env_from else '(default)'}",
         f"- Surefire reports: {len(reports)}",
         f"- Fixture input SHA-256: `{fixture_input_sha256}`",
         "",
