@@ -58,14 +58,11 @@ The local same-worktree Maven Build Cache principle is qualified on:
 
 This proves unchanged/docs-only reuse, app-local selectivity, shared-core dependent invalidation, code+test behaviour and test-only behaviour at module level.
 
-The current qualification slice is intentionally narrower than fresh-runner/shared-cache work:
+The build-model/configuration and cache-disabled slice is qualified by CI-08 through CI-11 on exact PR source `bbef150becf2d60c60d48a9f2f4ea86a90db77c7`, run `35317148073` (discovery + all 22 testcase jobs green).
 
-1. root POM/plugin configuration invalidation;
-2. module-local POM/plugin configuration invalidation;
-3. dependency-version invalidation;
-4. forced-fresh/cache-bypass correctness.
+It proves root/shared versus module-local model invalidation, shared dependency-version invalidation, and correct execution without build-cache reuse. See [`06-model-invalidation-and-cache-disabled.md`](06-model-invalidation-and-cache-disabled.md).
 
-Caching itself remains optional (`none | local | shared`); forced-fresh is an orthogonal override.
+Caching itself remains optional (`none | local | shared`). The next qualification slice is actual toolchain/input identity plus fresh-runner/cross-run shared-cache transport.
 
 ## Minimal PoP implementation
 
