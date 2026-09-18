@@ -38,6 +38,37 @@ jobs:
         id: matrix
         run: python3 harness/discover.py
 
+  production-value-contract:
+    name: Validate production-value qualification contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.EXPERIMENT_SOURCE_REVISION }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Validate benchmark harness and workload declaration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile harness/run_value_case.py harness/aggregate_value.py
+          python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          workload = tomllib.loads(
+              Path("workloads/event-timing-framework.toml").read_text(encoding="utf-8")
+          )
+          assert workload["repository"] == "brainboxemb/2026-010-02.java.event-timing-framework"
+          assert workload["revision"] == "0f9dbc2f5aa0beaec8f63465ada83f2bc2a83709"
+          assert workload["expected_test_reports"] == 6
+          assert len(workload["required_artifacts"]) == 2
+          print(workload["id"])
+          PY
+
+
   testcase:
     name: ${{ matrix.candidate }} / ${{ matrix.case }}
     needs: discover
