@@ -73,7 +73,7 @@ Bootstrap assertions are candidate-independent:
 
 Correctness assertions determine testcase pass/fail.
 
-Candidate-specific qualification expectations may additionally assert normalized workset fields and native cache sources. They remain declarative in TOML; the generic harness evaluates them without testcase-specific probing code.
+Candidate-specific qualification expectations may additionally assert normalized workset fields, native cache sources and the cache-read-disabled state. They remain declarative in TOML; the generic harness evaluates them without testcase-specific probing code.
 
 ## Observations are not log greps
 
@@ -103,7 +103,7 @@ candidate + isolated fixture worktree + testcase metadata + result directory
 
 The candidate definition supplies its command/capabilities. The harness applies the same setup/change sequence and correctness assertions around every candidate.
 
-The normalized result uses schema `brainboxemb.java-ci-experiment-result` version 2 and retains candidate-independent observations, candidate-native normalized evidence, execution-mode data and provenance.
+The normalized result uses schema `brainboxemb.java-ci-experiment-result` version 3 and retains candidate-independent observations, candidate-native normalized evidence, execution-mode data and provenance. Native cache evidence retains the original Maven source value as `source_raw` while `source` is the normalized cross-candidate execution state.
 
 ## CI orchestration
 
