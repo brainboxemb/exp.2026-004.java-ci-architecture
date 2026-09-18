@@ -1,0 +1,199 @@
+name: Java CI production-value consumer
+
+on:
+  workflow_run:
+    workflows:
+      - Java CI production-value producer
+    types:
+      - completed
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  EXPERIMENT_SOURCE_REVISION: ${{ github.event.workflow_run.head_sha }}
+  PRODUCER_RUN_ID: ${{ github.event.workflow_run.id }}
+  WORKLOAD_REVISION: 0f9dbc2f5aa0beaec8f63465ada83f2bc2a83709
+
+jobs:
+  control-consumer:
+    name: Control consumer sample ${{ matrix.sample }}
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [0, 1, 2]
+    steps:
+      - name: Checkout exact experiment source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.EXPERIMENT_SOURCE_REVISION }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Checkout exact representative workload
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: brainboxemb/2026-010-02.java.event-timing-framework
+          ref: ${{ env.WORKLOAD_REVISION }}
+          path: .value-workload
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Set up Java 8 and Maven dependency cache
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: '8.0.504+1'
+          check-latest: false
+          verify-signature: true
+          cache: maven
+          cache-dependency-path: .value-workload/**/pom.xml
+      - name: Run control consumer
+        shell: bash
+        run: |
+          python3 harness/run_value_case.py \
+            --workload workloads/event-timing-framework.toml \
+            --workload-dir .value-workload \
+            --mode control \
+            --phase consumer \
+            --sample '${{ matrix.sample }}' \
+            --results-dir 'results/_ci/value-control-consumer-${{ matrix.sample }}'
+      - name: Upload control consumer evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: java-ci-value-control-consumer-${{ matrix.sample }}
+          path: results/_ci/value-control-consumer-${{ matrix.sample }}
+          if-no-files-found: error
+          retention-days: 14
+
+  shared-consumer:
+    name: Shared consumer sample ${{ matrix.sample }}
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [0, 1, 2]
+    steps:
+      - name: Checkout exact experiment source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.EXPERIMENT_SOURCE_REVISION }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Checkout exact representative workload
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: brainboxemb/2026-010-02.java.event-timing-framework
+          ref: ${{ env.WORKLOAD_REVISION }}
+          path: .value-workload
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Set up Java 8 and Maven dependency cache
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: '8.0.504+1'
+          check-latest: false
+          verify-signature: true
+          cache: maven
+          cache-dependency-path: .value-workload/**/pom.xml
+      - name: Restore exact producer build cache
+        id: build-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/java-ci-value-cache/${{ matrix.sample }}
+          key: java-ci-value-${{ env.EXPERIMENT_SOURCE_REVISION }}-${{ env.WORKLOAD_REVISION }}-${{ env.PRODUCER_RUN_ID }}-${{ matrix.sample }}
+          fail-on-cache-miss: true
+      - name: Run shared consumer
+        shell: bash
+        run: |
+          python3 harness/run_value_case.py \
+            --workload workloads/event-timing-framework.toml \
+            --workload-dir .value-workload \
+            --mode shared \
+            --phase consumer \
+            --sample '${{ matrix.sample }}' \
+            --cache-dir '${{ runner.temp }}/java-ci-value-cache/${{ matrix.sample }}' \
+            --transport-hit '${{ steps.build-cache.outputs.cache-hit }}' \
+            --producer-run-id '${{ env.PRODUCER_RUN_ID }}' \
+            --producer-source-revision '${{ env.EXPERIMENT_SOURCE_REVISION }}' \
+            --results-dir 'results/_ci/value-shared-consumer-${{ matrix.sample }}'
+      - name: Upload shared consumer evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: java-ci-value-shared-consumer-${{ matrix.sample }}
+          path: results/_ci/value-shared-consumer-${{ matrix.sample }}
+          if-no-files-found: error
+          retention-days: 14
+
+  aggregate:
+    name: Aggregate production-value evidence
+    if: github.event.workflow_run.conclusion == 'success'
+    needs:
+      - control-consumer
+      - shared-consumer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact experiment source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.EXPERIMENT_SOURCE_REVISION }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Download producer evidence
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: java-ci-value-*-producer-*
+          path: .value-results/producer
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PRODUCER_RUN_ID }}
+
+      - name: Download consumer evidence
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: java-ci-value-*-consumer-*
+          path: .value-results/consumer
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+
+      - name: Fetch measured job timing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${PRODUCER_RUN_ID}/jobs?per_page=100" > .value-results/producer-jobs.json
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100" > .value-results/consumer-jobs.json
+
+      - name: Aggregate matched samples
+        shell: bash
+        run: |
+          python3 harness/aggregate_value.py \
+            --input-root .value-results \
+            --producer-jobs .value-results/producer-jobs.json \
+            --consumer-jobs .value-results/consumer-jobs.json \
+            --producer-run-id "${PRODUCER_RUN_ID}" \
+            --consumer-run-id "${GITHUB_RUN_ID}" \
+            --results-dir results/_ci/production-value-aggregate
+
+      - name: Add readable aggregate summary
+        shell: bash
+        run: cat results/_ci/production-value-aggregate/README.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload aggregate evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: java-ci-production-value-aggregate
+          path: results/_ci/production-value-aggregate
+          if-no-files-found: error
+          retention-days: 14

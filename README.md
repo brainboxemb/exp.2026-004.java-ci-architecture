@@ -86,4 +86,6 @@ The **runtime-identity and fresh-runner qualification is now green**: the cache 
 
 The **cross-workflow persistence qualification is now green**: CI-15 proves that a dedicated producer workflow can save Maven build-cache state and a later, separate `workflow_run` consumer can restore that exact state for the same source/runtime identity, start with zero module outputs, reuse all four modules as Maven-native `LOCAL`, and recover all four JARs plus five Surefire reports. Exact main `681ce7b9d56973b5540cb314c8e45e25618915a0`, producer run `35323272710`, consumer run `35323361468`. See [`docs/08-cross-workflow-cache.md`](docs/08-cross-workflow-cache.md).
 
-The next qualification is representative **end-to-end production value**: total wall-clock/hosted-runner benefit including setup and cache transport, not Maven phase time alone. Release/canonical-artifact policy remains afterward before any production rollout decision.
+The active qualification is now representative **end-to-end production value** (issue #14): three matched control/shared samples use the exact current event-timing framework source as a read-only workload and compare complete hosted-runner job duration plus producer+consumer compute, including setup and cache transport rather than Maven phase time alone. See [`docs/09-production-value.md`](docs/09-production-value.md).
+
+Release/canonical-artifact policy remains afterward before any production rollout decision.
