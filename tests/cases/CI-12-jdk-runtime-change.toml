@@ -1,0 +1,31 @@
+id = "CI-12"
+title = "Maven runtime JDK identity change"
+question = "Does changing the actual JDK used to run Maven from 8 to 17 invalidate module cache state for the same source and build model?"
+
+[setup]
+mode = "warm"
+
+[execute.prime_env_from]
+JAVA_HOME = "JAVA_HOME_8_X64"
+
+[execute.measured_env_from]
+JAVA_HOME = "JAVA_HOME_17_X64"
+
+[expect]
+tests_pass = true
+expected_test_reports = 5
+required_artifacts = [
+  "core/target/core-1.0.0-SNAPSHOT.jar",
+  "feature-a/target/feature-a-1.0.0-SNAPSHOT.jar",
+  "feature-b/target/feature-b-1.0.0-SNAPSHOT.jar",
+  "app/target/app-1.0.0-SNAPSHOT.jar",
+]
+
+[expect.candidates.maven-build-cache.workset]
+test_reports_mtime_changed = 5
+
+[expect.candidates.maven-build-cache.native_cache_sources]
+core = "BUILD"
+feature-a = "BUILD"
+feature-b = "BUILD"
+app = "BUILD"
