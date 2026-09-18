@@ -8,4 +8,5 @@ command = ["bash", "../../../candidates/maven-build-cache/run.sh", "verify"]
 [capabilities]
 repository_affected_selection = false
 module_incremental_cache = true
-cross_run_output_cache = false
+fresh_runner_output_cache = true
+cross_workflow_output_cache = false
