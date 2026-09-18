@@ -20,6 +20,8 @@ jobs:
     timeout-minutes: 2
     outputs:
       cases: ${{ steps.matrix.outputs.cases }}
+      fresh-reuse-cases: ${{ steps.matrix.outputs.fresh_reuse_cases }}
+      fresh-miss-cases: ${{ steps.matrix.outputs.fresh_miss_cases }}
       candidates: ${{ steps.matrix.outputs.candidates }}
     steps:
       - name: Checkout exact source
@@ -98,3 +100,210 @@ jobs:
           path: results/_ci/${{ matrix.candidate }}-${{ strategy.job-index }}
           if-no-files-found: error
           retention-days: 14
+
+  fresh-cache-producer:
+    name: Fresh cache producer / ${{ matrix.case }}
+    needs: discover
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        case: ${{ fromJSON(needs.discover.outputs.fresh-reuse-cases) }}
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.EXPERIMENT_SOURCE_REVISION }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Java 8
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: '8.0.504+1'
+          check-latest: false
+          verify-signature: true
+          cache: maven
+          cache-dependency-path: fixture/**/pom.xml
+
+      - name: Prepare exact Maven Wrapper
+        working-directory: fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mvn --batch-mode --no-transfer-progress \
+            org.apache.maven.plugins:maven-wrapper-plugin:3.3.4:wrapper \
+            -Dmaven=3.9.16 \
+            -Dtype=only-script \
+            -DdistributionSha256Sum=5af3b743dd8b876b5c45da33b676251e5f1687712644abb4ee519ca56e1d89ce
+          chmod +x mvnw
+          ./mvnw --version
+
+      - name: Produce Maven build cache
+        shell: bash
+        run: |
+          python3 harness/run_fresh_case.py \
+            --case '${{ matrix.case }}' \
+            --candidate maven-build-cache \
+            --phase producer \
+            --cache-dir '${{ runner.temp }}/java-ci-build-cache/${{ strategy.job-index }}' \
+            --results-dir 'results/_ci/fresh-producer-${{ strategy.job-index }}'
+
+      - name: Save exact producer cache
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/java-ci-build-cache/${{ strategy.job-index }}
+          key: java-ci-build-cache-${{ env.EXPERIMENT_SOURCE_REVISION }}-${{ github.run_id }}-${{ strategy.job-index }}
+
+      - name: Upload producer evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: java-ci-fresh-producer-${{ strategy.job-index }}
+          path: results/_ci/fresh-producer-${{ strategy.job-index }}
+          if-no-files-found: error
+          retention-days: 14
+
+  fresh-cache-consumer:
+    name: Fresh cache consumer / ${{ matrix.case }}
+    needs:
+      - discover
+      - fresh-cache-producer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        case: ${{ fromJSON(needs.discover.outputs.fresh-reuse-cases) }}
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.EXPERIMENT_SOURCE_REVISION }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Java 8
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: '8.0.504+1'
+          check-latest: false
+          verify-signature: true
+          cache: maven
+          cache-dependency-path: fixture/**/pom.xml
+
+      - name: Prepare exact Maven Wrapper
+        working-directory: fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mvn --batch-mode --no-transfer-progress \
+            org.apache.maven.plugins:maven-wrapper-plugin:3.3.4:wrapper \
+            -Dmaven=3.9.16 \
+            -Dtype=only-script \
+            -DdistributionSha256Sum=5af3b743dd8b876b5c45da33b676251e5f1687712644abb4ee519ca56e1d89ce
+          chmod +x mvnw
+          ./mvnw --version
+
+      - name: Restore exact producer cache
+        id: build-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/java-ci-build-cache/${{ strategy.job-index }}
+          key: java-ci-build-cache-${{ env.EXPERIMENT_SOURCE_REVISION }}-${{ github.run_id }}-${{ strategy.job-index }}
+          fail-on-cache-miss: true
+
+      - name: Consume transported Maven build cache
+        shell: bash
+        run: |
+          python3 harness/run_fresh_case.py \
+            --case '${{ matrix.case }}' \
+            --candidate maven-build-cache \
+            --phase consumer \
+            --cache-dir '${{ runner.temp }}/java-ci-build-cache/${{ strategy.job-index }}' \
+            --transport-hit '${{ steps.build-cache.outputs.cache-hit }}' \
+            --results-dir 'results/_ci/fresh-consumer-${{ strategy.job-index }}'
+
+      - name: Upload consumer evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: java-ci-fresh-consumer-${{ strategy.job-index }}
+          path: results/_ci/fresh-consumer-${{ strategy.job-index }}
+          if-no-files-found: error
+          retention-days: 14
+
+  fresh-cache-miss:
+    name: Fresh cache miss / ${{ matrix.case }}
+    needs: discover
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        case: ${{ fromJSON(needs.discover.outputs.fresh-miss-cases) }}
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.EXPERIMENT_SOURCE_REVISION }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Java 8
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: '8.0.504+1'
+          check-latest: false
+          verify-signature: true
+          cache: maven
+          cache-dependency-path: fixture/**/pom.xml
+
+      - name: Prepare exact Maven Wrapper
+        working-directory: fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mvn --batch-mode --no-transfer-progress \
+            org.apache.maven.plugins:maven-wrapper-plugin:3.3.4:wrapper \
+            -Dmaven=3.9.16 \
+            -Dtype=only-script \
+            -DdistributionSha256Sum=5af3b743dd8b876b5c45da33b676251e5f1687712644abb4ee519ca56e1d89ce
+          chmod +x mvnw
+          ./mvnw --version
+
+      - name: Attempt intentional missing cache restore
+        id: build-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/java-ci-build-cache-miss/${{ strategy.job-index }}
+          key: java-ci-build-cache-intentional-miss-${{ env.EXPERIMENT_SOURCE_REVISION }}-${{ github.run_id }}-${{ strategy.job-index }}
+          fail-on-cache-miss: false
+
+      - name: Verify normal fallback build
+        shell: bash
+        run: |
+          python3 harness/run_fresh_case.py \
+            --case '${{ matrix.case }}' \
+            --candidate maven-build-cache \
+            --phase miss \
+            --cache-dir '${{ runner.temp }}/java-ci-build-cache-miss/${{ strategy.job-index }}' \
+            --transport-hit '${{ steps.build-cache.outputs.cache-hit }}' \
+            --results-dir 'results/_ci/fresh-miss-${{ strategy.job-index }}'
+
+      - name: Upload miss/fallback evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: java-ci-fresh-miss-${{ strategy.job-index }}
+          path: results/_ci/fresh-miss-${{ strategy.job-index }}
+          if-no-files-found: error
+          retention-days: 14
+
