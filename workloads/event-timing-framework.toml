@@ -1,0 +1,17 @@
+id = "event-timing-framework-v0.2.1"
+title = "Event timing framework v0.2.1 production-shaped workload"
+repository = "brainboxemb/2026-010-02.java.event-timing-framework"
+revision = "0f9dbc2f5aa0beaec8f63465ada83f2bc2a83709"
+java_version = "8.0.504+1"
+expected_test_reports = 6
+required_artifacts = [
+  "framework/target/event-timing-framework-0.2.1.jar",
+  "app/target/event-timing-app-0.2.1.jar",
+]
+
+[production_baseline]
+workflow_run_id = 35211527836
+maven_reported_seconds = 18.214
+linux_canonical_job_seconds = 41
+wall_clock_seconds_to_capture = 67
+hosted_runner_seconds_to_capture = 60
