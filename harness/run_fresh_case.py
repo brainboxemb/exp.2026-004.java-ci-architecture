@@ -102,9 +102,9 @@ def main() -> int:
     )
 
     command = [str(v) for v in candidate["command"]]
-    command = command + [f"-Dmaven.build.cache.location={cache_dir}"]
     prepare_command = [str(v) for v in candidate.get("prepare_command", [])]
     candidate_cwd = work_root / str(candidate.get("working_directory", "."))
+    cache_env = {"MAVEN_BUILD_CACHE_BASE": str(cache_dir)}
 
     prepare = None
     if prepare_command:
@@ -112,7 +112,7 @@ def main() -> int:
         if prepare["exit_code"] != 0:
             raise SystemExit(f"candidate preparation failed; see {result_dir / 'prepare.log'}")
 
-    build = execute(command, candidate_cwd, result_dir / "measured.log")
+    build = execute(command, candidate_cwd, result_dir / "measured.log", cache_env)
     native_cache = capture_maven_cache_report(work_root, result_dir)
     reports = sorted(work_root.glob("*/target/surefire-reports/TEST-*.xml"))
     cache_files_after = file_count(cache_dir)
@@ -229,7 +229,7 @@ def main() -> int:
         "assertions": assertions,
         "test_reports": [str(path.relative_to(work_root)) for path in reports],
         "toolchain": {
-            "measured_maven": command_output([command[0], "--version"], candidate_cwd),
+            "measured_maven": command_output(command[:-1] + ["--version"], candidate_cwd, cache_env),
         },
         "provenance": {
             "repository_source_revision": checked_out_sha,
