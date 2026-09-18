@@ -62,7 +62,11 @@ The build-model/configuration and cache-disabled slice is qualified by CI-08 thr
 
 It proves root/shared versus module-local model invalidation, shared dependency-version invalidation, and correct execution without build-cache reuse. See [`06-model-invalidation-and-cache-disabled.md`](06-model-invalidation-and-cache-disabled.md).
 
-Caching itself remains optional (`none | local | shared`). The next qualification slice is actual toolchain/input identity plus fresh-runner/cross-run shared-cache transport.
+Caching itself remains optional (`none | local | shared`).
+
+The runtime/fresh-runner slice is qualified on exact PR source `03620b5ade2d561361b3a9085ab284ecdba92b44`, run `35319465746` (all 28 jobs green). CI-12 proves runtime JDK namespace separation, CI-13 proves fresh-runner/cross-job reuse with restored artifacts and Surefire evidence, and CI-14 proves explicit transport-miss fallback. See [`07-runtime-and-fresh-runner-cache.md`](07-runtime-and-fresh-runner-cache.md).
+
+The first attempt is also retained as useful failure evidence: default Maven Build Cache reused JDK-8 state under JDK 17, and fresh-runner reuse initially omitted Surefire XML. The corrected design adds a runtime-specific cache namespace and attached Surefire outputs rather than weakening those cases.
 
 ## Minimal PoP implementation
 
@@ -110,11 +114,11 @@ Start with one representative build-model change; broaden only during qualificat
 
 ### PoP-07 — fresh-runner reuse
 
-**Question:** Can a new GitHub-hosted runner restore valid build state produced by an earlier run?
+**Question:** Can a new GitHub-hosted runner restore valid build state produced by another hosted runner?
 
-This requires explicit cross-run cache transport or Maven remote-cache semantics. The testcase must record producer source/config/cache identity and consumer source/config/cache identity.
+This requires explicit cache transport or Maven remote-cache semantics. The testcase records producer/consumer source, runtime, transport and runner evidence.
 
-A same-job warm build does not satisfy this case.
+A same-job warm build does not satisfy this case. CI-13 now qualifies the producer → separate consumer path through transport of Maven's local build-cache directory. It does not yet claim retention across separate workflow runs.
 
 ### PoP-08 — forced-fresh equivalence
 
