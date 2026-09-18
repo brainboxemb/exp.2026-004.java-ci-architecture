@@ -15,7 +15,7 @@ from pathlib import Path
 import tomllib
 
 SCHEMA = "brainboxemb.java-ci-experiment-result"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def sha256(path: Path) -> str:
@@ -250,6 +250,16 @@ def main() -> int:
     test_classes_after = snapshot_glob(work_root, "*/target/test-classes/**/*.class")
     tests_after = snapshot_glob(work_root, "*/target/surefire-reports/TEST-*.xml")
     native_cache = capture_maven_cache_report(work_root, result_dir)
+    skip_cache_requested = "-Dmaven.build.cache.skipCache=true" in measured_append
+    native_cache_sources = [
+        str(project.get("source"))
+        for project in (native_cache or {}).get("projects", [])
+    ]
+    native_cache_read_bypassed = (
+        skip_cache_requested
+        and bool(native_cache_sources)
+        and all(source not in {"LOCAL", "REMOTE"} for source in native_cache_sources)
+    )
 
     assertions: list[dict[str, object]] = []
     expected = case.get("expect", {})
@@ -302,6 +312,17 @@ def main() -> int:
             "actual": actual_value,
         })
 
+    if "cache_read_bypassed" in candidate_expect:
+        expected_bypassed = bool(candidate_expect["cache_read_bypassed"])
+        assertions.append({
+            "name": "native-cache-read-bypassed",
+            "kind": "qualification",
+            "passed": native_cache_read_bypassed == expected_bypassed,
+            "expected": expected_bypassed,
+            "actual": native_cache_read_bypassed,
+            "native_sources": native_cache_sources,
+        })
+
     expected_sources = candidate_expect.get("native_cache_sources", {})
     if expected_sources:
         actual_sources = {
@@ -350,6 +371,7 @@ def main() -> int:
         },
         "workset": workset,
         "native_cache": native_cache,
+        "native_cache_read_bypassed": native_cache_read_bypassed,
         "assertions": assertions,
         "observations": {
             "artifacts": artifact_changes,
@@ -406,6 +428,7 @@ def main() -> int:
     ]
     if native_cache:
         summary.append(f"- Retained report: `{native_cache['report_file']}` (`{native_cache['report_sha256']}`)")
+        summary.append(f"- Cache read bypassed: {str(native_cache_read_bypassed).lower()}")
         for project in native_cache["projects"]:
             summary.append(
                 f"- `{project['artifact_id']}`: source={project['source']}, "
