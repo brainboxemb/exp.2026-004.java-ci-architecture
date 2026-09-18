@@ -158,17 +158,20 @@ No single timing result decides the architecture. Performance is evaluated after
 
 ## Qualification after PoP
 
-The representative production-value slice is now qualified on the real event-timing workload. Six matched samples across two exact-main producer/consumer pairs show a consistent later-run latency benefit but do not establish a structural hosted-compute reduction.
+The representative production-value slice is qualified on the real event-timing workload. Six matched samples across two exact-main producer/consumer pairs show a consistent later-run latency benefit but do not establish a structural hosted-compute reduction.
 
-Only after the PoP supports the core principles should the suite expand to cases such as:
+CI-16 additionally qualified product-scoped Git build-identity invalidation after first retaining the stale-identity baseline failure. The release/canonical-artifact policy is now also closed: normal canonical CI may use qualified project-selected cache modes, while exact-tag release remains fresh/empty-output with build-output cache disabled. Existing real `v0.2.1` release evidence already proves that operational boundary, so no redundant CI-17 is required.
+
+Future qualification may expand when a concrete adoption or production issue requires cases such as:
 
 - module versus root POM changes;
 - dependency version and plugin changes;
 - cache corruption/missing-entry fallback;
 - Linux/Windows native-cache boundaries;
 - longer retention/eviction behaviour if production adoption depends on it;
-- release/tag and canonical-artifact cache policy;
-- larger fixture/real consumer canaries.
+- longer-term cache retention/eviction behaviour if adoption depends on it;
+- additional product-specific non-source inputs;
+- larger or different real-consumer canaries when a rollout needs them.
 
 Those are qualification concerns, not prerequisites for proving the basic principle.
 
