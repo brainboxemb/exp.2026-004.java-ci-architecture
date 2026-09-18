@@ -1,0 +1,37 @@
+id = "CI-08"
+title = "Root POM plugin-configuration change"
+question = "Does a root build-plugin configuration change invalidate every module whose effective build model changes?"
+
+[setup]
+mode = "warm"
+
+[[changes]]
+path = "pom.xml"
+operation = "replace"
+find = """          <artifactId>maven-surefire-plugin</artifactId>
+          <version>${maven.surefire.plugin.version}</version>"""
+replace = """          <artifactId>maven-surefire-plugin</artifactId>
+          <version>${maven.surefire.plugin.version}</version>
+          <configuration>
+            <trimStackTrace>true</trimStackTrace>
+          </configuration>"""
+
+[expect]
+tests_pass = true
+expected_test_reports = 5
+required_artifacts = [
+  "core/target/core-1.0.0-SNAPSHOT.jar",
+  "feature-a/target/feature-a-1.0.0-SNAPSHOT.jar",
+  "feature-b/target/feature-b-1.0.0-SNAPSHOT.jar",
+  "app/target/app-1.0.0-SNAPSHOT.jar",
+]
+
+[expect.candidates.maven-build-cache.workset]
+artifact_outputs_payload_changed = 0
+test_reports_content_changed = 5
+
+[expect.candidates.maven-build-cache.native_cache_sources]
+core = "BUILD"
+feature-a = "BUILD"
+feature-b = "BUILD"
+app = "BUILD"

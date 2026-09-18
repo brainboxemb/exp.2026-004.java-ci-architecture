@@ -1,0 +1,32 @@
+id = "CI-10"
+title = "Managed test-dependency version change"
+question = "Does changing a shared managed test dependency invalidate every module that resolves that dependency?"
+
+[setup]
+mode = "warm"
+
+[[changes]]
+path = "pom.xml"
+operation = "replace"
+find = "<junit.version>4.13.2</junit.version>"
+replace = "<junit.version>4.13.1</junit.version>"
+
+[expect]
+tests_pass = true
+expected_test_reports = 5
+required_artifacts = [
+  "core/target/core-1.0.0-SNAPSHOT.jar",
+  "feature-a/target/feature-a-1.0.0-SNAPSHOT.jar",
+  "feature-b/target/feature-b-1.0.0-SNAPSHOT.jar",
+  "app/target/app-1.0.0-SNAPSHOT.jar",
+]
+
+[expect.candidates.maven-build-cache.workset]
+artifact_outputs_payload_changed = 0
+test_reports_content_changed = 5
+
+[expect.candidates.maven-build-cache.native_cache_sources]
+core = "BUILD"
+feature-a = "BUILD"
+feature-b = "BUILD"
+app = "BUILD"

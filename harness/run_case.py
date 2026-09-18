@@ -15,7 +15,7 @@ from pathlib import Path
 import tomllib
 
 SCHEMA = "brainboxemb.java-ci-experiment-result"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def sha256(path: Path) -> str:
@@ -164,6 +164,7 @@ def capture_maven_cache_report(work_root: Path, result_dir: Path) -> dict[str, o
     for element in root.iter():
         if local_name(element.tag) != "project":
             continue
+        source_raw = child_text(element, "source")
         projects.append({
             "group_id": child_text(element, "groupId"),
             "artifact_id": child_text(element, "artifactId"),
@@ -171,7 +172,8 @@ def capture_maven_cache_report(work_root: Path, result_dir: Path) -> dict[str, o
             "checksum_matched": parse_bool(child_text(element, "checksumMatched")),
             "lifecycle_matched": parse_bool(child_text(element, "lifecycleMatched")),
             "plugins_matched": parse_bool(child_text(element, "pluginsMatched")),
-            "source": child_text(element, "source"),
+            "source": "BUILD" if source_raw == "null" else source_raw,
+            "source_raw": source_raw,
             "shared_to_remote": parse_bool(child_text(element, "sharedToRemote")),
             "url": child_text(element, "url"),
         })
@@ -218,6 +220,9 @@ def main() -> int:
     command = [str(v) for v in candidate["command"]]
     prepare_command = [str(v) for v in candidate.get("prepare_command", [])]
     candidate_cwd = work_root / str(candidate.get("working_directory", "."))
+    candidate_execution = case.get("execute", {}).get("candidates", {}).get(str(candidate["id"]), {})
+    measured_append = [str(v) for v in candidate_execution.get("measured_append", [])]
+    measured_command = command + measured_append
 
     prepare = None
     if prepare_command:
@@ -241,12 +246,22 @@ def main() -> int:
     changed_files = apply_changes(work_root, list(case.get("changes", [])))
     fixture_input_sha256 = tree_digest(work_root)
 
-    measured = execute(command, candidate_cwd, result_dir / "measured.log")
+    measured = execute(measured_command, candidate_cwd, result_dir / "measured.log")
     artifacts_after = snapshot_glob(work_root, "*/target/*.jar", archive_payload=True)
     main_classes_after = snapshot_glob(work_root, "*/target/classes/**/*.class")
     test_classes_after = snapshot_glob(work_root, "*/target/test-classes/**/*.class")
     tests_after = snapshot_glob(work_root, "*/target/surefire-reports/TEST-*.xml")
     native_cache = capture_maven_cache_report(work_root, result_dir)
+    skip_cache_requested = "-Dmaven.build.cache.skipCache=true" in measured_append
+    native_cache_sources = [
+        str(project.get("source"))
+        for project in (native_cache or {}).get("projects", [])
+    ]
+    native_cache_read_bypassed = (
+        skip_cache_requested
+        and bool(native_cache_sources)
+        and all(source not in {"LOCAL", "REMOTE"} for source in native_cache_sources)
+    )
 
     assertions: list[dict[str, object]] = []
     expected = case.get("expect", {})
@@ -299,6 +314,17 @@ def main() -> int:
             "actual": actual_value,
         })
 
+    if "cache_read_bypassed" in candidate_expect:
+        expected_bypassed = bool(candidate_expect["cache_read_bypassed"])
+        assertions.append({
+            "name": "native-cache-read-bypassed",
+            "kind": "qualification",
+            "passed": native_cache_read_bypassed == expected_bypassed,
+            "expected": expected_bypassed,
+            "actual": native_cache_read_bypassed,
+            "native_sources": native_cache_sources,
+        })
+
     expected_sources = candidate_expect.get("native_cache_sources", {})
     if expected_sources:
         actual_sources = {
@@ -330,6 +356,11 @@ def main() -> int:
         "status": "pass" if passed else "fail",
         "setup_mode": setup_mode,
         "changed_files": changed_files,
+        "execution": {
+            "base_command": command,
+            "measured_append": measured_append,
+            "measured_command": measured_command,
+        },
         "prepare": prepare,
         "prime": prime,
         "build": measured,
@@ -342,6 +373,7 @@ def main() -> int:
         },
         "workset": workset,
         "native_cache": native_cache,
+        "native_cache_read_bypassed": native_cache_read_bypassed,
         "assertions": assertions,
         "observations": {
             "artifacts": artifact_changes,
@@ -380,6 +412,7 @@ def main() -> int:
         f"- Saved versus prime: {saved_vs_prime_ms if saved_vs_prime_ms is not None else '(n/a)'} ms",
         f"- Speed-up versus prime: {speedup_vs_prime_x if speedup_vs_prime_x is not None else '(n/a)'}x",
         f"- Changed fixture files: {', '.join(changed_files) if changed_files else '(none)'}",
+        f"- Measured command: `{' '.join(measured_command)}`",
         f"- Surefire reports: {len(reports)}",
         f"- Fixture input SHA-256: `{fixture_input_sha256}`",
         "",
@@ -397,6 +430,7 @@ def main() -> int:
     ]
     if native_cache:
         summary.append(f"- Retained report: `{native_cache['report_file']}` (`{native_cache['report_sha256']}`)")
+        summary.append(f"- Cache read bypassed: {str(native_cache_read_bypassed).lower()}")
         for project in native_cache["projects"]:
             summary.append(
                 f"- `{project['artifact_id']}`: source={project['source']}, "

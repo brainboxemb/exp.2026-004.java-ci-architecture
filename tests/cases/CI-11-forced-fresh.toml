@@ -1,0 +1,35 @@
+id = "CI-11"
+title = "Forced-fresh warm rebuild"
+question = "Can the same warm source execute the complete Maven lifecycle with cache reads disabled so correctness never depends on cached state?"
+
+[setup]
+mode = "warm"
+
+[execute.candidates.maven-build-cache]
+measured_append = [
+  "-Dmaven.build.cache.skipCache=true",
+  "-Dmaven.build.cache.skipSave=true",
+]
+
+[expect]
+tests_pass = true
+expected_test_reports = 5
+required_artifacts = [
+  "core/target/core-1.0.0-SNAPSHOT.jar",
+  "feature-a/target/feature-a-1.0.0-SNAPSHOT.jar",
+  "feature-b/target/feature-b-1.0.0-SNAPSHOT.jar",
+  "app/target/app-1.0.0-SNAPSHOT.jar",
+]
+
+[expect.candidates.maven-build-cache]
+cache_read_bypassed = true
+
+[expect.candidates.maven-build-cache.workset]
+artifact_outputs_payload_changed = 0
+test_reports_mtime_changed = 5
+
+[expect.candidates.maven-build-cache.native_cache_sources]
+core = "BUILD"
+feature-a = "BUILD"
+feature-b = "BUILD"
+app = "BUILD"

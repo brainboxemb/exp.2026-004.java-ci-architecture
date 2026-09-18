@@ -36,6 +36,22 @@ required_artifacts = ["app/target/app-1.0.0-SNAPSHOT.jar"]
 
 Later cross-run/fresh-runner cases will add explicit cache transfer/setup semantics instead of overloading `warm`.
 
+## Candidate-specific measured execution
+
+A testcase may add arguments to the **measured** invocation for one candidate without changing the priming invocation:
+
+```toml
+[execute.candidates.maven-build-cache]
+measured_append = [
+  "-Dmaven.build.cache.skipCache=true",
+  "-Dmaven.build.cache.skipSave=true",
+]
+```
+
+This is intended for qualification modes such as forced-fresh/cache-bypass. The candidate still owns the base Maven command; the testcase only declares the execution condition it needs to prove. The normalized result retains the base command, appended arguments and final measured command.
+
+Do not use this mechanism to encode a second build lifecycle in a testcase.
+
 ## Changes
 
 Each `[[changes]]` entry names a path relative to `fixture/` and one controlled operation.
@@ -56,6 +72,8 @@ Bootstrap assertions are candidate-independent:
 - expected Surefire report count.
 
 Correctness assertions determine testcase pass/fail.
+
+Candidate-specific qualification expectations may additionally assert normalized workset fields, native cache sources and the cache-read-disabled state. They remain declarative in TOML; the generic harness evaluates them without testcase-specific probing code.
 
 ## Observations are not log greps
 
@@ -85,7 +103,7 @@ candidate + isolated fixture worktree + testcase metadata + result directory
 
 The candidate definition supplies its command/capabilities. The harness applies the same setup/change sequence and correctness assertions around every candidate.
 
-The normalized result uses schema `brainboxemb.java-ci-experiment-result` version 1 and retains candidate-independent observations plus provenance.
+The normalized result uses schema `brainboxemb.java-ci-experiment-result` version 3 and retains candidate-independent observations, candidate-native normalized evidence, execution-mode data and provenance. Native cache evidence retains the original Maven source value as `source_raw` while `source` is the normalized cross-candidate execution state.
 
 ## CI orchestration
 
