@@ -15,7 +15,7 @@ from pathlib import Path
 import tomllib
 
 SCHEMA = "brainboxemb.java-ci-experiment-result"
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def sha256(path: Path) -> str:
