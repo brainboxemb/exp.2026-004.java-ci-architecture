@@ -17,3 +17,8 @@ candidate = "maven-build-cache"
 
 [expect]
 tests_pass = true
+
+[correction]
+module_pom = "app/pom.xml"
+cache_input_property = "maven.build.cache.input.1"
+cache_input_path = "../.git/HEAD"
