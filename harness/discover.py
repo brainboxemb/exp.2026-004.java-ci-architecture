@@ -20,6 +20,7 @@ local_cases = []
 fresh_reuse_cases = []
 fresh_miss_cases = []
 cross_workflow_reuse_cases = []
+identity_cases = []
 
 for path in case_paths:
     data = tomllib.loads(path.read_text(encoding="utf-8"))
@@ -33,6 +34,8 @@ for path in case_paths:
         fresh_miss_cases.append(rel)
     elif mode == "cross-workflow-cache-reuse":
         cross_workflow_reuse_cases.append(rel)
+    elif mode == "git-identity-change":
+        identity_cases.append(rel)
     else:
         raise SystemExit(f"unsupported testcase setup mode in {rel}: {mode}")
 
@@ -41,6 +44,7 @@ payloads = {
     "fresh_reuse_cases": json.dumps(fresh_reuse_cases, separators=(",", ":")),
     "fresh_miss_cases": json.dumps(fresh_miss_cases, separators=(",", ":")),
     "cross_workflow_reuse_cases": json.dumps(cross_workflow_reuse_cases, separators=(",", ":")),
+    "identity_cases": json.dumps(identity_cases, separators=(",", ":")),
     "candidates": json.dumps(candidates, separators=(",", ":")),
 }
 output = os.environ.get("GITHUB_OUTPUT")
@@ -54,5 +58,6 @@ else:
         "fresh_reuse_cases": fresh_reuse_cases,
         "fresh_miss_cases": fresh_miss_cases,
         "cross_workflow_reuse_cases": cross_workflow_reuse_cases,
+        "identity_cases": identity_cases,
         "candidates": candidates,
     }, indent=2))
