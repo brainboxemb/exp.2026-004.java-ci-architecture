@@ -63,15 +63,20 @@ def main() -> int:
         )
 
     setup_mode = str(case.get("setup", {}).get("mode", ""))
-    expected_mode = {
-        "producer": "fresh-cache-reuse",
-        "consumer": "fresh-cache-reuse",
-        "miss": "fresh-cache-miss",
+    expected_modes = {
+        "producer": {"fresh-cache-reuse", "cross-workflow-cache-reuse"},
+        "consumer": {"fresh-cache-reuse", "cross-workflow-cache-reuse"},
+        "miss": {"fresh-cache-miss"},
     }[args.phase]
-    if setup_mode != expected_mode:
+    if setup_mode not in expected_modes:
         raise SystemExit(
-            f"phase {args.phase} requires setup mode {expected_mode}, got {setup_mode}"
+            f"phase {args.phase} requires one of {sorted(expected_modes)}, got {setup_mode}"
         )
+    if setup_mode == "cross-workflow-cache-reuse" and args.phase == "consumer":
+        if not args.producer_run_id:
+            raise SystemExit("cross-workflow consumer requires --producer-run-id")
+        if not args.producer_source_revision:
+            raise SystemExit("cross-workflow consumer requires --producer-source-revision")
 
     requested_source_revision = os.environ.get("EXPERIMENT_SOURCE_REVISION")
     checked_out_sha = command_output(["git", "rev-parse", "HEAD"], repo)
@@ -191,7 +196,7 @@ def main() -> int:
             "actual": actual_transport,
         })
 
-        if args.producer_run_id:
+        if setup_mode == "cross-workflow-cache-reuse":
             assertions.append({
                 "name": "separate-workflow-run",
                 "kind": "qualification",
@@ -199,7 +204,6 @@ def main() -> int:
                 "producer_run_id": args.producer_run_id,
                 "consumer_run_id": current_run_id,
             })
-        if args.producer_source_revision:
             assertions.append({
                 "name": "producer-consumer-source-match",
                 "kind": "qualification",
