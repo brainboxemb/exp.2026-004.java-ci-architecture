@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: java-ci-experiment-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   EXPERIMENT_SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
 
