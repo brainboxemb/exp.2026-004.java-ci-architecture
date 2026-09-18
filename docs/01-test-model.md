@@ -34,9 +34,10 @@ required_artifacts = ["app/target/app-1.0.0-SNAPSHOT.jar"]
 - `cold` — no priming build before the measured invocation;
 - `warm` — execute one unmeasured priming invocation, apply the declared change, then execute the measured invocation;
 - `fresh-cache-reuse` — a producer job creates Maven build-cache state and a separate consumer runner restores that transported cache into an otherwise fresh fixture worktree;
-- `fresh-cache-miss` — a fresh runner explicitly receives no transported build cache and must fall back to a normal build.
+- `fresh-cache-miss` — a fresh runner explicitly receives no transported build cache and must fall back to a normal build;
+- `cross-workflow-cache-reuse` — one workflow run produces Maven build-cache state and a later `workflow_run` consumer restores that exact state for the same source on a new hosted runner.
 
-Fresh-runner modes are orchestrated as separate GitHub jobs. They are not simulated by deleting files inside one warm job.
+Fresh-runner modes are orchestrated as separate GitHub jobs. Cross-workflow reuse additionally requires distinct producer/consumer workflow-run IDs in retained evidence. These modes are not simulated by deleting files inside one warm job.
 
 ## Candidate-specific measured execution
 
@@ -117,7 +118,7 @@ candidate + isolated fixture worktree + testcase metadata + result directory
 
 The candidate definition supplies its command/capabilities. The harness applies the same setup/change sequence and correctness assertions around every candidate.
 
-The normalized result uses schema `brainboxemb.java-ci-experiment-result` version 4 and retains candidate-independent observations, candidate-native normalized evidence, execution-mode data and provenance. Native cache evidence retains the original Maven source value as `source_raw` while `source` is the normalized cross-candidate execution state.
+The normalized result uses schema `brainboxemb.java-ci-experiment-result` version 5 and retains candidate-independent observations, candidate-native normalized evidence, execution-mode data and provenance. Native cache evidence retains the original Maven source value as `source_raw` while `source` is the normalized cross-candidate execution state.
 
 ## CI orchestration
 
@@ -131,6 +132,7 @@ GitHub Actions:
 6. invokes the local generic testcase Action for local cases;
 7. for `fresh-cache-reuse`, runs a producer and a dependent consumer on separate hosted runners, transporting only Maven's build-cache directory between them;
 8. for `fresh-cache-miss`, proves an explicit transport miss and normal Maven fallback;
-9. uploads every result directory and fails when correctness/qualification assertions fail.
+9. for `cross-workflow-cache-reuse`, uses a dedicated producer workflow and a later `workflow_run` consumer, checks out the producer's exact source, restores the producer's exact cache key and asserts that producer/consumer run IDs differ;
+10. uploads every result directory and fails when correctness/qualification assertions fail.
 
 The workflow is orchestration. It must not duplicate testcase semantics.
