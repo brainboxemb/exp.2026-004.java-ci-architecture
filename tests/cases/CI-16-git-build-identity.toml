@@ -1,0 +1,24 @@
+id = "CI-16"
+title = "Git build identity changes with an identical source tree"
+question = "Does cached canonical output preserve the exact current Git revision when repository HEAD changes but the tracked source tree is identical?"
+
+[setup]
+mode = "git-identity-change"
+
+[workload]
+definition = "workloads/event-timing-framework.toml"
+identity_artifact = "app/target/event-timing-app-0.2.1.jar"
+identity_resource = "event-timing-build.properties"
+revision_property = "build.revision"
+timestamp_property = "build.timestamp"
+
+[qualification]
+candidate = "maven-build-cache"
+
+[expect]
+tests_pass = true
+
+[correction]
+module_pom = "app/pom.xml"
+cache_input_property = "maven.build.cache.input.1"
+cache_input_path = "../.git/HEAD"

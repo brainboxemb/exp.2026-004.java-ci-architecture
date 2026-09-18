@@ -26,6 +26,7 @@ jobs:
       cases: ${{ steps.matrix.outputs.cases }}
       fresh-reuse-cases: ${{ steps.matrix.outputs.fresh_reuse_cases }}
       fresh-miss-cases: ${{ steps.matrix.outputs.fresh_miss_cases }}
+      identity-cases: ${{ steps.matrix.outputs.identity_cases }}
       candidates: ${{ steps.matrix.outputs.candidates }}
     steps:
       - name: Checkout exact source
@@ -53,7 +54,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile harness/run_value_case.py harness/aggregate_value.py
+          python3 -m py_compile harness/run_value_case.py harness/aggregate_value.py harness/run_identity_case.py
           python3 - <<'PY'
           import tomllib
           from pathlib import Path
@@ -68,6 +69,72 @@ jobs:
           print(workload["id"])
           PY
 
+
+
+  git-build-identity:
+    name: Git build identity / ${{ matrix.case }}
+    needs: discover
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        case: ${{ fromJSON(needs.discover.outputs.identity-cases) }}
+
+    steps:
+      - name: Checkout exact experiment source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.EXPERIMENT_SOURCE_REVISION }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Checkout exact representative workload
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: brainboxemb/2026-010-02.java.event-timing-framework
+          ref: 0f9dbc2f5aa0beaec8f63465ada83f2bc2a83709
+          path: .identity-workload
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Java 8 and Maven dependency cache
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: '8.0.504+1'
+          check-latest: false
+          verify-signature: true
+          cache: maven
+          cache-dependency-path: .identity-workload/**/pom.xml
+
+      - name: Run Git build-identity qualification
+        shell: bash
+        run: |
+          python3 harness/run_identity_case.py \
+            --case '${{ matrix.case }}' \
+            --candidate maven-build-cache \
+            --workload-dir .identity-workload \
+            --cache-dir '${{ runner.temp }}/java-ci-identity-cache/${{ strategy.job-index }}' \
+            --results-dir 'results/_ci/git-identity-${{ strategy.job-index }}'
+
+      - name: Add readable identity summary
+        if: always()
+        shell: bash
+        run: |
+          result_dir='results/_ci/git-identity-${{ strategy.job-index }}'
+          if [[ -f "$result_dir/README.md" ]]; then
+            cat "$result_dir/README.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload Git identity evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: java-ci-git-identity-${{ strategy.job-index }}
+          path: results/_ci/git-identity-${{ strategy.job-index }}
+          if-no-files-found: error
+          retention-days: 14
 
   testcase:
     name: ${{ matrix.candidate }} / ${{ matrix.case }}
