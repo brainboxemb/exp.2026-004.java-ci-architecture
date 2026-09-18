@@ -45,6 +45,8 @@ def main() -> int:
     parser.add_argument("--cache-dir", required=True)
     parser.add_argument("--transport-hit")
     parser.add_argument("--results-dir", required=True)
+    parser.add_argument("--producer-run-id")
+    parser.add_argument("--producer-source-revision")
     args = parser.parse_args()
 
     repo = Path(__file__).resolve().parents[1]
@@ -89,6 +91,8 @@ def main() -> int:
     shutil.copytree(repo / "fixture", work_root)
 
     cache_dir = Path(args.cache_dir).resolve()
+    current_run_id = os.environ.get("GITHUB_RUN_ID")
+
     if args.phase == "producer":
         if cache_dir.exists():
             shutil.rmtree(cache_dir)
@@ -187,6 +191,23 @@ def main() -> int:
             "actual": actual_transport,
         })
 
+        if args.producer_run_id:
+            assertions.append({
+                "name": "separate-workflow-run",
+                "kind": "qualification",
+                "passed": bool(current_run_id) and current_run_id != args.producer_run_id,
+                "producer_run_id": args.producer_run_id,
+                "consumer_run_id": current_run_id,
+            })
+        if args.producer_source_revision:
+            assertions.append({
+                "name": "producer-consumer-source-match",
+                "kind": "qualification",
+                "passed": checked_out_sha == args.producer_source_revision,
+                "producer_source_revision": args.producer_source_revision,
+                "consumer_source_revision": checked_out_sha,
+            })
+
         expected_sources = expected.get("candidates", {}).get(
             str(candidate["id"]), {}
         ).get("native_cache_sources", {})
@@ -221,6 +242,9 @@ def main() -> int:
             "transport_hit": parse_bool(args.transport_hit),
             "cache_files_before": cache_files_before,
             "cache_files_after": cache_files_after,
+            "producer_workflow_run_id": args.producer_run_id,
+            "producer_source_revision": args.producer_source_revision,
+            "consumer_workflow_run_id": current_run_id,
         },
         "fresh_state": {
             "module_output_files_before": module_output_files_before,
@@ -258,6 +282,8 @@ def main() -> int:
         f"- Runner: `{os.environ.get('RUNNER_NAME')}`",
         f"- Fresh module output files before build: {module_output_files_before}",
         f"- Transport hit: {parse_bool(args.transport_hit)}",
+        f"- Producer workflow run: {args.producer_run_id or '(same-workflow producer)'}",
+        f"- Consumer workflow run: {current_run_id}",
         f"- Cache files before/after: {cache_files_before}/{cache_files_after}",
         f"- Measured duration: {build['duration_ms']} ms",
         "",
