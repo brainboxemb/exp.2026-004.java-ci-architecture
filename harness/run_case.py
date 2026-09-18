@@ -218,6 +218,9 @@ def main() -> int:
     command = [str(v) for v in candidate["command"]]
     prepare_command = [str(v) for v in candidate.get("prepare_command", [])]
     candidate_cwd = work_root / str(candidate.get("working_directory", "."))
+    candidate_execution = case.get("execute", {}).get("candidates", {}).get(str(candidate["id"]), {})
+    measured_append = [str(v) for v in candidate_execution.get("measured_append", [])]
+    measured_command = command + measured_append
 
     prepare = None
     if prepare_command:
@@ -241,7 +244,7 @@ def main() -> int:
     changed_files = apply_changes(work_root, list(case.get("changes", [])))
     fixture_input_sha256 = tree_digest(work_root)
 
-    measured = execute(command, candidate_cwd, result_dir / "measured.log")
+    measured = execute(measured_command, candidate_cwd, result_dir / "measured.log")
     artifacts_after = snapshot_glob(work_root, "*/target/*.jar", archive_payload=True)
     main_classes_after = snapshot_glob(work_root, "*/target/classes/**/*.class")
     test_classes_after = snapshot_glob(work_root, "*/target/test-classes/**/*.class")
@@ -330,6 +333,11 @@ def main() -> int:
         "status": "pass" if passed else "fail",
         "setup_mode": setup_mode,
         "changed_files": changed_files,
+        "execution": {
+            "base_command": command,
+            "measured_append": measured_append,
+            "measured_command": measured_command,
+        },
         "prepare": prepare,
         "prime": prime,
         "build": measured,
@@ -380,6 +388,7 @@ def main() -> int:
         f"- Saved versus prime: {saved_vs_prime_ms if saved_vs_prime_ms is not None else '(n/a)'} ms",
         f"- Speed-up versus prime: {speedup_vs_prime_x if speedup_vs_prime_x is not None else '(n/a)'}x",
         f"- Changed fixture files: {', '.join(changed_files) if changed_files else '(none)'}",
+        f"- Measured command: `{' '.join(measured_command)}`",
         f"- Surefire reports: {len(reports)}",
         f"- Fixture input SHA-256: `{fixture_input_sha256}`",
         "",
