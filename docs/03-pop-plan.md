@@ -152,11 +152,13 @@ The target principle is supported only when:
 - a fresh runner can reuse eligible state;
 - eligible state can survive between separate workflow runs;
 - forced-fresh execution remains available;
-- measured overhead does not erase the benefit for realistic repository sizes.
+- measured overhead does not erase the latency benefit for realistic repository sizes; hosted-compute savings, if claimed, must be independently supported.
 
 No single timing result decides the architecture. Performance is evaluated after correctness and observability, but an incremental-build claim must ultimately show actual work and time reduction rather than only unchanged final artifacts.
 
 ## Qualification after PoP
+
+The representative production-value slice is now qualified on the real event-timing workload. Six matched samples across two exact-main producer/consumer pairs show a consistent later-run latency benefit but do not establish a structural hosted-compute reduction.
 
 Only after the PoP supports the core principles should the suite expand to cases such as:
 
@@ -165,7 +167,7 @@ Only after the PoP supports the core principles should the suite expand to cases
 - cache corruption/missing-entry fallback;
 - Linux/Windows native-cache boundaries;
 - longer retention/eviction behaviour if production adoption depends on it;
-- release/tag behaviour;
+- release/tag and canonical-artifact cache policy;
 - larger fixture/real consumer canaries.
 
 Those are qualification concerns, not prerequisites for proving the basic principle.
