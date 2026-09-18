@@ -162,6 +162,14 @@ The qualified namespace fingerprint includes:
 
 This is a correctness boundary, not merely a cache-performance key. A runtime identity change selects a different Maven build-cache namespace and therefore cannot accidentally consume state produced under the previous runtime.
 
+### Repository/build identity is a cache correctness input
+
+The representative real consumer embeds `git.commit.id.full` and a build timestamp in its executable JAR. Source-file equality alone is therefore not sufficient evidence that this module's packaged output is reusable: a different Git commit may require different artifact bytes even when the tracked tree is identical.
+
+CI-16 qualifies this explicitly before release policy is finalized. The target rule is narrow rather than repository-wide: modules whose output does not depend on repository identity should remain eligible for reuse, while an artifact that embeds the concrete Git revision must never retain an earlier revision.
+
+If the baseline Maven checksum does not observe this input, the adapter/product cache contract must add the smallest correct module/plugin-specific identity input and qualify it here. Globally partitioning all module cache state by repository SHA is a fallback, not the preferred first solution, because it would unnecessarily destroy cross-commit reuse.
+
 ### Surefire reports are cache outputs
 
 Module reuse can legitimately skip test execution. On a fresh runner, however, skipped tests leave no local Surefire XML unless those reports are restored as part of the validated module output.
@@ -220,5 +228,6 @@ These are not open candidate competitions:
 6. Can execute/reuse/miss decisions be retained as reliable structured evidence?
 7. Is the overhead worthwhile for the scale of our Java repositories?
 8. If shared cache retention beyond one workflow execution is needed, does it remain reliable across separate workflow runs and retention windows?
+9. When product output embeds Git/build identity, does repository identity participate in invalidation narrowly enough to keep that artifact correct without needlessly rebuilding unrelated modules?
 
 If these principles pass, later qualification expands edge/error/platform coverage. If a principle fails, change the concept first; do not hide the failure by weakening the testcase.
