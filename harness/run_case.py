@@ -388,8 +388,9 @@ def main() -> int:
             })
 
     passed = all(bool(item["passed"]) for item in assertions)
-    prime_maven = command_output([command[0], "--version"], candidate_cwd, prime_env) if prime else None
-    measured_maven = command_output([command[0], "--version"], candidate_cwd, measured_env)
+    version_command = command[:-1] + ["--version"]
+    prime_maven = command_output(version_command, candidate_cwd, prime_env) if prime else None
+    measured_maven = command_output(version_command, candidate_cwd, measured_env)
 
     result = {
         "schema": SCHEMA,
