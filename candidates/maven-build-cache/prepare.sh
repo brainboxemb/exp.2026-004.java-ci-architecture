@@ -26,6 +26,17 @@ cat > .mvn/maven-build-cache-config.xml <<'EOF'
       </dirNames>
     </attachedOutputs>
   </configuration>
+  <input>
+    <plugins>
+      <plugin groupId="pl.project13.maven" artifactId="git-commit-id-plugin">
+        <dirScan mode="auto">
+          <includes>
+            <include tagName="dotGitDirectory" recursive="false" glob="HEAD"/>
+          </includes>
+        </dirScan>
+      </plugin>
+    </plugins>
+  </input>
 </cache>
 EOF
 
