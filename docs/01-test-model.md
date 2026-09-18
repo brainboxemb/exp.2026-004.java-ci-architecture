@@ -35,7 +35,8 @@ required_artifacts = ["app/target/app-1.0.0-SNAPSHOT.jar"]
 - `warm` — execute one unmeasured priming invocation, apply the declared change, then execute the measured invocation;
 - `fresh-cache-reuse` — a producer job creates Maven build-cache state and a separate consumer runner restores that transported cache into an otherwise fresh fixture worktree;
 - `fresh-cache-miss` — a fresh runner explicitly receives no transported build cache and must fall back to a normal build;
-- `cross-workflow-cache-reuse` — one workflow run produces Maven build-cache state and a later `workflow_run` consumer restores that exact state for the same source on a new hosted runner.
+- `cross-workflow-cache-reuse` — one workflow run produces Maven build-cache state and a later `workflow_run` consumer restores that exact state for the same source on a new hosted runner;
+- `git-identity-change` — an exact real-consumer checkout is built once, then moved to a different local Git commit with the identical tracked tree; module outputs are removed while Maven cache state is retained so embedded Git build identity can be qualified independently of source-file changes.
 
 Fresh-runner modes are orchestrated as separate GitHub jobs. Cross-workflow reuse additionally requires distinct producer/consumer workflow-run IDs in retained evidence. These modes are not simulated by deleting files inside one warm job.
 
@@ -133,6 +134,7 @@ GitHub Actions:
 7. for `fresh-cache-reuse`, runs a producer and a dependent consumer on separate hosted runners, transporting only Maven's build-cache directory between them;
 8. for `fresh-cache-miss`, proves an explicit transport miss and normal Maven fallback;
 9. for `cross-workflow-cache-reuse`, uses a dedicated producer workflow and a later `workflow_run` consumer, checks out the producer's exact source, restores the producer's exact cache key and asserts that producer/consumer run IDs differ;
-10. uploads every result directory and fails when correctness/qualification assertions fail.
+10. for `git-identity-change`, uses the declared immutable real-consumer workload, creates an identity-only child commit with the same tree, clears module outputs and asserts the rebuilt/hydrated artifact embeds the current commit identity;
+11. uploads every result directory and fails when correctness/qualification assertions fail.
 
 The workflow is orchestration. It must not duplicate testcase semantics.
