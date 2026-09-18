@@ -21,6 +21,18 @@ def job_seconds(job: dict[str, object]) -> float:
     return (parse_time(completed) - parse_time(started)).total_seconds()
 
 
+def step_seconds(job: dict[str, object], step_name: str) -> float:
+    for step in job.get("steps", []):
+        if step.get("name") != step_name:
+            continue
+        started = step.get("started_at")
+        completed = step.get("completed_at")
+        if not isinstance(started, str) or not isinstance(completed, str):
+            raise ValueError(f"step is not complete: {step_name}")
+        return (parse_time(completed) - parse_time(started)).total_seconds()
+    raise KeyError(f"missing step {step_name} in {job.get('name')}")
+
+
 def stats(values: list[float]) -> dict[str, float]:
     return {
         "median": statistics.median(values),
@@ -91,6 +103,14 @@ def main() -> int:
         sp_job = job_seconds(producer_jobs[f"Shared producer sample {sample}"])
         cc_job = job_seconds(consumer_jobs[f"Control consumer sample {sample}"])
         sc_job = job_seconds(consumer_jobs[f"Shared consumer sample {sample}"])
+        sp_save = step_seconds(
+            producer_jobs[f"Shared producer sample {sample}"],
+            "Save exact shared build cache",
+        )
+        sc_restore = step_seconds(
+            consumer_jobs[f"Shared consumer sample {sample}"],
+            "Restore exact producer build cache",
+        )
 
         later_saved = cc_job - sc_job
         later_pct = (later_saved / cc_job * 100.0) if cc_job else 0.0
@@ -127,9 +147,13 @@ def main() -> int:
                 "producer": sp["timing"]["candidate_prepare_ms"],
                 "consumer": sc["timing"]["candidate_prepare_ms"],
             },
-            "shared_cache_files": {
-                "producer_after": sp["transport"]["cache_files_after"],
-                "consumer_before": sc["transport"]["cache_files_before"],
+            "shared_cache_transport": {
+                "save_step_seconds": sp_save,
+                "restore_step_seconds": sc_restore,
+                "producer_files_after": sp["transport"]["cache_files_after"],
+                "consumer_files_before": sc["transport"]["cache_files_before"],
+                "producer_bytes_after": sp["transport"]["cache_bytes_after"],
+                "consumer_bytes_before": sc["transport"]["cache_bytes_before"],
             },
         })
 
@@ -139,11 +163,16 @@ def main() -> int:
     pair_control = [float(s["two_run_compute"]["control_seconds"]) for s in samples]
     pair_shared = [float(s["two_run_compute"]["shared_seconds"]) for s in samples]
     pair_saved = [float(s["two_run_compute"]["saved_seconds"]) for s in samples]
+    later_pct = [float(s["later_run"]["saved_percent"]) for s in samples]
+    pair_pct = [float(s["two_run_compute"]["saved_percent"]) for s in samples]
+    save_steps = [float(s["shared_cache_transport"]["save_step_seconds"]) for s in samples]
+    restore_steps = [float(s["shared_cache_transport"]["restore_step_seconds"]) for s in samples]
+    cache_bytes = [float(s["shared_cache_transport"]["producer_bytes_after"]) for s in samples]
 
     first = results[("control", "producer", 0)]
     aggregate = {
         "schema": "brainboxemb.java-ci-production-value-aggregate",
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "pass",
         "producer_workflow_run_id": args.producer_run_id,
         "consumer_workflow_run_id": args.consumer_run_id,
@@ -159,6 +188,11 @@ def main() -> int:
             "two_run_control_job_seconds": stats(pair_control),
             "two_run_shared_job_seconds": stats(pair_shared),
             "two_run_saved_seconds": stats(pair_saved),
+            "later_run_saved_percent": stats(later_pct),
+            "two_run_saved_percent": stats(pair_pct),
+            "shared_cache_save_step_seconds": stats(save_steps),
+            "shared_cache_restore_step_seconds": stats(restore_steps),
+            "shared_cache_uncompressed_bytes": stats(cache_bytes),
         },
         "production_context": first.get("production_baseline", {}),
         "interpretation_boundary": (
@@ -200,6 +234,12 @@ def main() -> int:
         f"| Shared producer + consumer | {stats(pair_shared)['median']:.1f} s | {min(pair_shared):.1f} s | {max(pair_shared):.1f} s |",
         f"| Saved by shared | {stats(pair_saved)['median']:.1f} s | {min(pair_saved):.1f} s | {max(pair_saved):.1f} s |",
         "",
+        "## Shared-cache transport",
+        "",
+        f"- Save step: median {stats(save_steps)['median']:.1f} s (min {min(save_steps):.1f}, max {max(save_steps):.1f})",
+        f"- Restore step: median {stats(restore_steps)['median']:.1f} s (min {min(restore_steps):.1f}, max {max(restore_steps):.1f})",
+        f"- Uncompressed Maven build-cache bytes: median {stats(cache_bytes)['median']:.0f} B",
+        "",
         "## Samples",
         "",
         "| Sample | control producer | shared producer | control consumer | shared consumer | later saved | two-run saved |",
@@ -237,6 +277,10 @@ def main() -> int:
         "samples": 3,
         "later_run_saved_seconds_median": stats(later_saved)["median"],
         "two_run_saved_seconds_median": stats(pair_saved)["median"],
+        "later_run_saved_percent_median": stats(later_pct)["median"],
+        "two_run_saved_percent_median": stats(pair_pct)["median"],
+        "cache_save_step_seconds_median": stats(save_steps)["median"],
+        "cache_restore_step_seconds_median": stats(restore_steps)["median"],
     }))
     return 0
 
