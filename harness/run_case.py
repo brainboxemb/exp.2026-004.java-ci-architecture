@@ -164,6 +164,7 @@ def capture_maven_cache_report(work_root: Path, result_dir: Path) -> dict[str, o
     for element in root.iter():
         if local_name(element.tag) != "project":
             continue
+        source_raw = child_text(element, "source")
         projects.append({
             "group_id": child_text(element, "groupId"),
             "artifact_id": child_text(element, "artifactId"),
@@ -171,7 +172,8 @@ def capture_maven_cache_report(work_root: Path, result_dir: Path) -> dict[str, o
             "checksum_matched": parse_bool(child_text(element, "checksumMatched")),
             "lifecycle_matched": parse_bool(child_text(element, "lifecycleMatched")),
             "plugins_matched": parse_bool(child_text(element, "pluginsMatched")),
-            "source": child_text(element, "source"),
+            "source": "BUILD" if source_raw == "null" else source_raw,
+            "source_raw": source_raw,
             "shared_to_remote": parse_bool(child_text(element, "sharedToRemote")),
             "url": child_text(element, "url"),
         })
