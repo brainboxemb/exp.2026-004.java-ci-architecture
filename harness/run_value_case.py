@@ -30,6 +30,12 @@ def file_count(root: Path) -> int:
     return sum(1 for path in root.rglob("*") if path.is_file())
 
 
+def byte_count(root: Path) -> int:
+    if not root.exists():
+        return 0
+    return sum(path.stat().st_size for path in root.rglob("*") if path.is_file())
+
+
 def target_file_count(root: Path) -> int:
     return sum(1 for path in root.glob("*/target/**/*") if path.is_file())
 
@@ -79,6 +85,7 @@ def main() -> int:
     before_outputs = target_file_count(work)
     cache_dir = Path(args.cache_dir).resolve() if args.cache_dir else None
     cache_files_before = file_count(cache_dir) if cache_dir else None
+    cache_bytes_before = byte_count(cache_dir) if cache_dir else None
 
     if args.mode == "shared" and cache_dir is None:
         raise SystemExit("shared mode requires --cache-dir")
@@ -127,6 +134,7 @@ def main() -> int:
     )
     reports = sorted(work.glob("*/target/surefire-reports/TEST-*.xml"))
     cache_files_after = file_count(cache_dir) if cache_dir else None
+    cache_bytes_after = byte_count(cache_dir) if cache_dir else None
 
     assertions: list[dict[str, object]] = []
     assertions.append({
@@ -215,7 +223,7 @@ def main() -> int:
 
     result = {
         "schema": "brainboxemb.java-ci-production-value-result",
-        "schema_version": 1,
+        "schema_version": 2,
         "workload": workload["id"],
         "workload_title": workload["title"],
         "workload_repository": workload["repository"],
@@ -239,6 +247,8 @@ def main() -> int:
             "transport_hit": parse_bool(args.transport_hit),
             "cache_files_before": cache_files_before,
             "cache_files_after": cache_files_after,
+            "cache_bytes_before": cache_bytes_before,
+            "cache_bytes_after": cache_bytes_after,
             "producer_workflow_run_id": args.producer_run_id,
             "consumer_workflow_run_id": os.environ.get("GITHUB_RUN_ID"),
         },
@@ -274,6 +284,7 @@ def main() -> int:
         f"- Maven reported total: {result['timing']['maven_reported_total']}",
         f"- Fresh module output files before build: {before_outputs}",
         f"- Cache files before/after: {cache_files_before}/{cache_files_after}",
+        f"- Cache bytes before/after: {cache_bytes_before}/{cache_bytes_after}",
         "",
         "## Assertions",
         "",
