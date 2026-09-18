@@ -118,7 +118,7 @@ Start with one representative build-model change; broaden only during qualificat
 
 This requires explicit cache transport or Maven remote-cache semantics. The testcase records producer/consumer source, runtime, transport and runner evidence.
 
-A same-job warm build does not satisfy this case. CI-13 now qualifies the producer → separate consumer path through transport of Maven's local build-cache directory. It does not yet claim retention across separate workflow runs.
+A same-job warm build does not satisfy this case. CI-13 qualifies producer → separate consumer reuse across hosted jobs, and CI-15 now extends that proof across separate GitHub Actions workflow runs using an exact producer-run/source cache key. See [`08-cross-workflow-cache.md`](08-cross-workflow-cache.md).
 
 ### PoP-08 — forced-fresh equivalence
 
@@ -150,6 +150,7 @@ The target principle is supported only when:
 - structured evidence distinguishes hit/miss/execute/reuse;
 - compile and test worksets are no broader than the mechanism requires;
 - a fresh runner can reuse eligible state;
+- eligible state can survive between separate workflow runs;
 - forced-fresh execution remains available;
 - measured overhead does not erase the benefit for realistic repository sizes.
 
@@ -163,7 +164,7 @@ Only after the PoP supports the core principles should the suite expand to cases
 - dependency version and plugin changes;
 - cache corruption/missing-entry fallback;
 - Linux/Windows native-cache boundaries;
-- multi-run retention/eviction;
+- longer retention/eviction behaviour if production adoption depends on it;
 - release/tag behaviour;
 - larger fixture/real consumer canaries.
 
