@@ -80,6 +80,27 @@ The target PoP mechanism for module-level incremental/cache behaviour is Apache 
 
 This is a **target design choice subject to PoP qualification**, not yet a production decision. If the PoP finds correctness, observability or CI portability problems that cannot be resolved cleanly, the architecture must be reconsidered before production rollout.
 
+## Cache adoption modes
+
+Build-output caching is an **optional optimisation capability**, not part of Java correctness semantics. A project should not pay cache setup/maintenance cost merely because the shared framework supports it.
+
+The intended project-level modes are:
+
+```text
+none
+  ordinary Maven lifecycle; no build-output cache reuse
+
+local
+  Maven Build Cache local reuse for development or same-environment workflows
+
+shared
+  Maven Build Cache reuse across CI runs/runners through an explicitly qualified shared transport
+```
+
+`none` is the safe initial/default mode. Projects opt into `local` or `shared` when repository size, module count or test/build cost makes the optimisation worthwhile.
+
+Forced-fresh execution is **orthogonal** to the configured mode. Qualification/release diagnostics must be able to disable cache reads and execute the ordinary Maven lifecycle without introducing a second build architecture. The Maven Build Cache extension provides this through `maven.build.cache.skipCache`; cache saving can be disabled separately when a qualification run must neither consume nor publish cached state.
+
 ## Cache layers are separate
 
 The architecture distinguishes these caches explicitly:
@@ -129,7 +150,7 @@ Not every event should maximize cache reuse.
 
 The target policy is:
 
-- normal PR/local CI: eligible safe cache reads/writes;
+- normal PR/local CI: ordinary Maven by default; cache reads/writes only when the project explicitly enables a qualified cache mode;
 - fresh-runner testcase: explicitly prove cross-run hydration;
 - cache diagnostics: allow read-only, write-only or disabled modes where useful;
 - exact release qualification: correctness takes precedence over cache speed; the release path must support forcing a fresh Maven execution rather than depending on a prior cached result.
@@ -163,6 +184,7 @@ These are not open candidate competitions:
 5. Dependency caching and build-output caching are separate concerns.
 6. Publication reuses canonical build output and never rebuilds merely to publish.
 7. Release qualification must retain a forced-fresh path.
+8. Build-output caching is optional and project-configurable; `none` remains a valid first-class mode.
 
 ### Questions that require PoP evidence
 
