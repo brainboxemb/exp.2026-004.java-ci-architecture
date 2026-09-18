@@ -80,4 +80,6 @@ Issue [#2](https://github.com/brainboxemb/exp.2026-004.java-ci-architecture/issu
 
 The **local same-worktree Maven Build Cache PoP is now qualified**: the seven declarative cases prove module-level cache reuse, app-only selectivity, shared-core invalidation, code+test behaviour and test-only behaviour against native Maven cache evidence. See [`docs/05-local-maven-build-cache-pop.md`](docs/05-local-maven-build-cache-pop.md).
 
-The current qualification slice covers build-model/configuration invalidation and forced-fresh behaviour. Actual toolchain invalidation, fresh-runner/cross-run cache transport, failure fallback and repeated performance measurements follow afterward. Production repositories are not changed until that qualification supports a cross-project rollout decision.
+The **build-model/configuration and cache-disabled qualification is now green**: root/shared model changes invalidate broadly, app-local model changes remain app-local, shared dependency changes invalidate all consuming modules, and the same Maven lifecycle remains correct with build-cache reads disabled. See [`docs/06-model-invalidation-and-cache-disabled.md`](docs/06-model-invalidation-and-cache-disabled.md).
+
+The next phase moves beyond the same runner/worktree: actual toolchain/input invalidation and fresh-runner/cross-run shared-cache transport. Failure fallback, repeated performance measurements and release/canonical-artifact policy follow afterward. Production repositories are not changed until that qualification supports a cross-project rollout decision.
