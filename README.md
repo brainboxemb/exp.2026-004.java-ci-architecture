@@ -43,7 +43,7 @@ The target responsibility split is:
 - GitHub Actions: event, runner, job and artifact orchestration;
 - Moon/generic repository layer: affected/capability selection and platform policy;
 - Maven: Java reactor, lifecycle, build and test authority;
-- Maven-native build cache: target PoP mechanism for module-level incremental/cache semantics;
+- Maven-native build cache: optional module-level optimisation, with intended modes `none | local | shared`;
 - publication: reuse canonical prepared output, never rebuild merely to publish.
 
 See [`docs/02-target-architecture.md`](docs/02-target-architecture.md).
@@ -80,4 +80,4 @@ Issue [#2](https://github.com/brainboxemb/exp.2026-004.java-ci-architecture/issu
 
 The **local same-worktree Maven Build Cache PoP is now qualified**: the seven declarative cases prove module-level cache reuse, app-only selectivity, shared-core invalidation, code+test behaviour and test-only behaviour against native Maven cache evidence. See [`docs/05-local-maven-build-cache-pop.md`](docs/05-local-maven-build-cache-pop.md).
 
-The next phase is qualification beyond the local worktree: build-model/toolchain invalidation, forced-fresh behaviour, fresh-runner/cross-run cache transport, failure fallback and repeated performance measurements. Production repositories are not changed until that qualification supports a cross-project rollout decision.
+The current qualification slice covers build-model/configuration invalidation and forced-fresh behaviour. Actual toolchain invalidation, fresh-runner/cross-run cache transport, failure fallback and repeated performance measurements follow afterward. Production repositories are not changed until that qualification supports a cross-project rollout decision.
