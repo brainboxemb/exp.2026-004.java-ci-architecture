@@ -48,6 +48,25 @@ Observed control behaviour:
 
 The current PoP fixture adds a second independent app test class and class-level output observation so compilation and test execution can be measured more precisely. Historical evidence remains reproducible by checking out its exact revision.
 
+## Qualified local PoP
+
+The local same-worktree Maven Build Cache principle is qualified on:
+
+- exact main `bc5d1b16da3820b72430611b65969ec7fb0588d0`;
+- exact-main run `35250860673`;
+- CI-01 through CI-07 against both plain Maven control and Maven Build Cache.
+
+This proves unchanged/docs-only reuse, app-local selectivity, shared-core dependent invalidation, code+test behaviour and test-only behaviour at module level.
+
+The current qualification slice is intentionally narrower than fresh-runner/shared-cache work:
+
+1. root POM/plugin configuration invalidation;
+2. module-local POM/plugin configuration invalidation;
+3. dependency-version invalidation;
+4. forced-fresh/cache-bypass correctness.
+
+Caching itself remains optional (`none | local | shared`); forced-fresh is an orthogonal override.
+
 ## Minimal PoP implementation
 
 Add one target implementation adapter for Maven-native build caching. Do not implement Moon-output-cache and hybrid alternatives merely to create a benchmark tournament.
