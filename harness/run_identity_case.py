@@ -11,6 +11,7 @@ import time
 import zipfile
 from pathlib import Path
 import tomllib
+import xml.etree.ElementTree as ET
 
 from run_case import capture_maven_cache_report, command_output, execute, sha256
 
@@ -94,6 +95,43 @@ def git(command: list[str], cwd: Path) -> str:
     return completed.stdout.strip()
 
 
+def apply_project_cache_input(
+    work: Path,
+    module_pom: str,
+    property_name: str,
+    input_path: str,
+) -> dict[str, str]:
+    pom = work / module_pom
+    if not pom.is_file():
+        raise RuntimeError(f"cache-input module POM does not exist: {pom}")
+
+    namespace = "http://maven.apache.org/POM/4.0.0"
+    ET.register_namespace("", namespace)
+    tree = ET.parse(pom)
+    root = tree.getroot()
+    ns = {"m": namespace}
+
+    properties = root.find("m:properties", ns)
+    if properties is None:
+        properties = ET.Element(f"{{{namespace}}}properties")
+        artifact_id = root.find("m:artifactId", ns)
+        insert_at = list(root).index(artifact_id) + 1 if artifact_id is not None else 1
+        root.insert(insert_at, properties)
+
+    existing = properties.find(f"m:{property_name}", ns)
+    if existing is None:
+        existing = ET.SubElement(properties, f"{{{namespace}}}{property_name}")
+    existing.text = input_path
+
+    tree.write(pom, encoding="utf-8", xml_declaration=True)
+    return {
+        "module_pom": module_pom,
+        "property": property_name,
+        "path": input_path,
+        "pom_sha256": sha256(pom),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", required=True)
@@ -140,9 +178,18 @@ def main() -> int:
             f"{expected_workload_revision}"
         )
 
+    correction_cfg = case.get("correction", {})
+    correction = apply_project_cache_input(
+        work,
+        str(correction_cfg["module_pom"]),
+        str(correction_cfg["cache_input_property"]),
+        str(correction_cfg["cache_input_path"]),
+    )
+
     # Prepare the target adapter once. The generated .mvn cache configuration is
-    # deliberately left uncommitted so the tracked Git tree remains the exact
-    # immutable production workload in both phases.
+    # deliberately left uncommitted. The app-specific Maven cache-input
+    # declaration is likewise a PoP correction applied only in this isolated
+    # workload checkout; no production repository is modified.
     prepare = execute(
         ["bash", str(candidate_dir / "prepare.sh")],
         work,
@@ -173,6 +220,7 @@ def main() -> int:
     producer_identity = jar_properties(identity_artifact, identity_resource)
     producer_artifact_sha256 = sha256(identity_artifact)
     producer_cache_files = file_count(cache_base)
+    corrected_worktree_diff = command_output(["git", "diff", "--", correction["module_pom"]], work)
 
     # Change repository identity only: a child commit with the same tree.
     git(["config", "user.name", "Java CI PoP"], work)
@@ -301,6 +349,10 @@ def main() -> int:
         "question": case["question"],
         "status": "pass" if passed else "fail",
         "candidate": candidate["id"],
+        "correction": {
+            **correction,
+            "worktree_diff": corrected_worktree_diff,
+        },
         "workload": {
             "repository": workload["repository"],
             "declared_revision": expected_workload_revision,
@@ -354,6 +406,7 @@ def main() -> int:
         f"- Producer revision: `{producer_revision}`",
         f"- Consumer revision: `{consumer_revision}`",
         f"- Git tree identical: `{str(producer_tree == consumer_tree).lower()}`",
+        f"- Correction: `{correction['module_pom']}` adds `{correction['property']}={correction['path']}`",
         f"- Consumer output files before Maven: `{consumer_outputs_before}`",
         f"- Producer embedded revision: `{producer_identity.get(revision_property)}`",
         f"- Consumer embedded revision: `{consumer_identity.get(revision_property)}`",
