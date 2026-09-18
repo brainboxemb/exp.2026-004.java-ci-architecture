@@ -21,6 +21,9 @@ required_artifacts = [
   "app/target/app-1.0.0-SNAPSHOT.jar",
 ]
 
+[expect.candidates.maven-build-cache]
+cache_read_bypassed = true
+
 [expect.candidates.maven-build-cache.workset]
 artifact_outputs_payload_changed = 0
 test_reports_mtime_changed = 5
