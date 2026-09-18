@@ -166,9 +166,11 @@ This is a correctness boundary, not merely a cache-performance key. A runtime id
 
 The representative real consumer embeds `git.commit.id.full` and a build timestamp in its executable JAR. Source-file equality alone is therefore not sufficient evidence that this module's packaged output is reusable: a different Git commit may require different artifact bytes even when the tracked tree is identical.
 
-CI-16 qualifies this explicitly before release policy is finalized. The target rule is narrow rather than repository-wide: modules whose output does not depend on repository identity should remain eligible for reuse, while an artifact that embeds the concrete Git revision must never retain an earlier revision.
+CI-16 qualifies this explicitly. The baseline failed: both real-consumer modules were restored as `LOCAL` for a different commit with the identical tree, leaving the old revision embedded in the app JAR.
 
-If the baseline Maven checksum does not observe this input, the adapter/product cache contract must add the smallest correct module/plugin-specific identity input and qualify it here. Globally partitioning all module cache state by repository SHA is a fallback, not the preferred first solution, because it would unnecessarily destroy cross-commit reuse.
+The qualified correction is narrow rather than repository-wide: the app module declares `../.git/HEAD` as an additional Maven Build Cache project input. CI-16 then proves `framework=LOCAL`, `app=BUILD` and exact current embedded revision. Modules whose output does not depend on repository identity remain eligible for reuse. See [`10-git-build-identity.md`](10-git-build-identity.md).
+
+Globally partitioning all module cache state by repository SHA is therefore unnecessary and would destroy valid cross-commit reuse.
 
 ### Surefire reports are cache outputs
 
