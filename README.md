@@ -88,4 +88,6 @@ The **cross-workflow persistence qualification is now green**: CI-15 proves that
 
 The representative **end-to-end production-value qualification is now complete** (issue #14). Two independent exact-main benchmark pairs provide six matched samples against the exact current event-timing framework workload. Shared caching makes every later consumer run faster, with paired latency savings of `16, 14, 4, 3, 9, 2 s` (median 6.5 s / 28.8%). Total producer+consumer hosted compute is not consistently lower: paired savings are `10, 10, -1, 0, 9, -2 s`. See [`docs/09-production-value.md`](docs/09-production-value.md).
 
-The active qualification is now **release/canonical-artifact policy**: decide when canonical/release artifacts may be hydrated from source-equivalent cache state and when an explicit cache-bypassed/empty-output build is required. No production rollout is activated automatically.
+The active release/canonical-artifact qualification exposed one correctness prerequisite, tracked by issue #18: the real application embeds the concrete Git revision in its JAR, so CI-16 first proves whether an identical source tree under a different Git commit can safely use shared Maven cache state without retaining a stale `BuildIdentity.revision`. The testcase deliberately allows reusable modules without build identity to remain cached; it does not globally invalidate the reactor merely to force green.
+
+After Git identity correctness is qualified, exact-tag release policy can be finalized. No production rollout is activated automatically.
