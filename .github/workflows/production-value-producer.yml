@@ -1,0 +1,175 @@
+name: Java CI production-value producer
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/production-value-producer.yml'
+      - '.github/workflows/production-value-consumer.yml'
+      - 'harness/run_value_case.py'
+      - 'harness/aggregate_value.py'
+      - 'workloads/event-timing-framework.toml'
+      - 'candidates/maven-build-cache/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  EXPERIMENT_SOURCE_REVISION: ${{ github.sha }}
+  WORKLOAD_REVISION: 0f9dbc2f5aa0beaec8f63465ada83f2bc2a83709
+
+jobs:
+  prime-dependencies:
+    name: Prime representative dependency cache
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact experiment source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.EXPERIMENT_SOURCE_REVISION }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Checkout exact representative workload
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: brainboxemb/2026-010-02.java.event-timing-framework
+          ref: ${{ env.WORKLOAD_REVISION }}
+          path: .value-workload
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Java 8 and Maven dependency cache
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: '8.0.504+1'
+          check-latest: false
+          verify-signature: true
+          cache: maven
+          cache-dependency-path: .value-workload/**/pom.xml
+
+      - name: Prime normal and cache-extension dependencies
+        working-directory: .value-workload
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw --version
+          ./mvnw --batch-mode --no-transfer-progress -DskipTests dependency:go-offline
+          ./mvnw --batch-mode --no-transfer-progress \
+            org.apache.maven.plugins:maven-dependency-plugin:3.8.1:get \
+            -Dartifact=org.apache.maven.extensions:maven-build-cache-extension:1.3.0 \
+            -Dtransitive=true
+
+  control-producer:
+    name: Control producer sample ${{ matrix.sample }}
+    needs: prime-dependencies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [0, 1, 2]
+    steps:
+      - name: Checkout exact experiment source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.EXPERIMENT_SOURCE_REVISION }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Checkout exact representative workload
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: brainboxemb/2026-010-02.java.event-timing-framework
+          ref: ${{ env.WORKLOAD_REVISION }}
+          path: .value-workload
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Set up Java 8 and Maven dependency cache
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: '8.0.504+1'
+          check-latest: false
+          verify-signature: true
+          cache: maven
+          cache-dependency-path: .value-workload/**/pom.xml
+      - name: Run control producer-equivalent
+        shell: bash
+        run: |
+          python3 harness/run_value_case.py \
+            --workload workloads/event-timing-framework.toml \
+            --workload-dir .value-workload \
+            --mode control \
+            --phase producer \
+            --sample '${{ matrix.sample }}' \
+            --results-dir 'results/_ci/value-control-producer-${{ matrix.sample }}'
+      - name: Upload control producer evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: java-ci-value-control-producer-${{ matrix.sample }}
+          path: results/_ci/value-control-producer-${{ matrix.sample }}
+          if-no-files-found: error
+          retention-days: 14
+
+  shared-producer:
+    name: Shared producer sample ${{ matrix.sample }}
+    needs: prime-dependencies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [0, 1, 2]
+    steps:
+      - name: Checkout exact experiment source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.EXPERIMENT_SOURCE_REVISION }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Checkout exact representative workload
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: brainboxemb/2026-010-02.java.event-timing-framework
+          ref: ${{ env.WORKLOAD_REVISION }}
+          path: .value-workload
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Set up Java 8 and Maven dependency cache
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: '8.0.504+1'
+          check-latest: false
+          verify-signature: true
+          cache: maven
+          cache-dependency-path: .value-workload/**/pom.xml
+      - name: Run shared producer
+        shell: bash
+        run: |
+          python3 harness/run_value_case.py \
+            --workload workloads/event-timing-framework.toml \
+            --workload-dir .value-workload \
+            --mode shared \
+            --phase producer \
+            --sample '${{ matrix.sample }}' \
+            --cache-dir '${{ runner.temp }}/java-ci-value-cache/${{ matrix.sample }}' \
+            --results-dir 'results/_ci/value-shared-producer-${{ matrix.sample }}'
+      - name: Save exact shared build cache
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/java-ci-value-cache/${{ matrix.sample }}
+          key: java-ci-value-${{ env.EXPERIMENT_SOURCE_REVISION }}-${{ env.WORKLOAD_REVISION }}-${{ github.run_id }}-${{ matrix.sample }}
+      - name: Upload shared producer evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: java-ci-value-shared-producer-${{ matrix.sample }}
+          path: results/_ci/value-shared-producer-${{ matrix.sample }}
+          if-no-files-found: error
+          retention-days: 14
